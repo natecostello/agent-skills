@@ -12,64 +12,81 @@ description: >-
 license: MIT
 metadata:
   author: natecostello
-  version: "3.1"
+  version: "4.0"
 ---
 
 # App Secret Management
 
-System keyring for runtime, password manager for durable backup. This is the
-industry-standard approach used by `gh`, `aws`, `docker`, and VS Code — delegate
-to existing infrastructure rather than building custom encryption.
+One keychain entry per app, password manager for durable backup. Delegate to
+existing OS and password manager infrastructure rather than building custom
+encryption.
 
 Applies across app types (CLI, GUI, web app, daemon) — the keyring access method
 and nag mechanism vary by context.
 
 ## Core Principles
 
-1. **System keyring is the runtime store.** All secret reads come from the OS
-   keyring (macOS Keychain, GNOME Keyring, Windows Credential Manager).
+1. **One keychain entry per app.** Store a single encryption key in the OS
+   keychain. All secrets live in a local encrypted file, encrypted with that key.
+   This bounds ACL exposure to one entry — if it ever needs re-authorization,
+   it's one action, not one per secret.
 
-2. **Password manager is the durable backup.** On every secret mutation, auto-
-   export to the user's password manager. On a new machine, one import restores
-   everything.
+2. **OS CLI tools for interpreted languages on macOS/Linux.** Python, Node,
+   Ruby CLIs on macOS/Linux access the keychain via OS CLI tools (`security`
+   on macOS, `secret-tool` on Linux), not keyring libraries. OS CLI tools have
+   stable binary identity (system-signed, fixed paths). Keyring libraries go
+   through the interpreter binary, whose identity changes on upgrades, venv
+   rebuilds, and reinstalls.
 
-3. **Never block the primary operation.** If the password manager is unavailable,
+3. **Password manager is the durable backup.** On every secret mutation,
+   auto-export the full secret set to the user's password manager. On a new
+   machine, one import restores everything.
+
+4. **Never block the primary operation.** If the password manager is unavailable,
    the keyring operation succeeds and the user gets a warning. Think `git commit`
    (always works offline) vs `git push` (durable backup, can fail gracefully).
 
-4. **Composability via stdin/stdout.** Export to stdout, import from stdin. Pipes
+5. **Composability via stdin/stdout.** Export to stdout, import from stdin. Pipes
    through any password manager CLI (`lpass`, `op`, `bw`) without the app knowing
    which one. See [keyring-by-framework.md](references/keyring-by-framework.md)
    for pipe examples.
 
 ## Architecture
 
-Runtime (keyring: direct or encrypted store) → auto-export → Password Manager (backup) → import on new machine
+```
+App startup:
+  1. Read encryption key from keychain (single OS keychain entry)
+  2. Decrypt local secrets file
+  3. Secrets available in memory
 
-**Two runtime approaches** — direct keyring (one entry per secret) or single
-keychain key + encrypted local store. Both are standard. Consult
-[runtime-storage-tradeoffs.md](references/runtime-storage-tradeoffs.md) when
-choosing between them.
+Secret mutation:
+  1. Update local encrypted file
+  2. Auto-export full secret set → password manager (fire-and-forget)
+
+New machine:
+  1. Import from password manager → local encrypted file + keychain entry
+```
 
 ## Implementation
 
 ### Keyring Layer
 
-Use the platform's keyring abstraction. Never store secrets in plaintext config
-files or databases. See
+One keychain entry holds the encryption key for the local secrets file. See
 [keyring-by-framework.md](references/keyring-by-framework.md) for per-framework
 code examples.
 
-**Interpreted-language CLIs (Python, Node, Ruby):** Prefer OS CLI tools
-(`security` on macOS, `secret-tool` on Linux) over library-based keyring access.
-On macOS, keychain ACLs are tied to the interpreter binary path — when it
-changes (venv rebuild, version upgrade, `nvm use`), every keychain entry
-requires re-authorization. OS CLI tools have stable binary identity
-(system-signed, fixed paths), avoiding this re-authorization churn. See the
-reference doc for code examples and fallback guidance.
+**Interpreted-language CLIs (Python, Node, Ruby):** Access the keychain via OS
+CLI tools (`security` on macOS, `secret-tool` on Linux). See the reference doc
+for code examples.
+
+**Compiled-language CLIs (Go, Rust):** Library-based keychain access is fine —
+compiled binaries have stable identity.
+
+**Electron:** Use the built-in `safeStorage` API, which implements this pattern
+natively (one keychain entry for encryption, encrypted buffers in local storage).
 
 **Daemons:** If the service runs in user context (LaunchAgent, systemd user
-service), keyring access works normally. If headless or root, the keyring may be
+service), keychain access works normally. If headless or root, the keyring may be
 inaccessible — use one of these alternatives:
 
 1. **SOPS + age** — encrypted config, decrypted at startup with a local identity
@@ -82,12 +99,28 @@ inaccessible — use one of these alternatives:
 4. **File-based keychain** (macOS) — dedicated `.keychain` file with password in
    System Keychain. More moving parts but works for true LaunchDaemons.
 
+### Encrypted Local Store
+
+The local secrets file is encrypted with the key from the single keychain entry.
+Use the **age** encryption format — one standard across all languages:
+
+- **Python:** `pyrage` library (Rust-backed, pre-built wheels, no CLI needed)
+- **Non-Python CLIs / shell scripts:** `age` CLI
+- **Config files with mixed secrets:** SOPS + age (only values encrypted)
+
+See [encrypted-store-implementation.md](references/encrypted-store-implementation.md) for
+code examples.
+
+The encrypted file lives in the app's data directory (`~/.local/share/myapp/` on
+Linux, `~/Library/Application Support/myapp/` on macOS). Protect with filesystem
+permissions (chmod 600).
+
 ### Auto-Export on Mutation
 
 Every command that creates, updates, or deletes a secret triggers auto-export
-after the keyring operation succeeds. Auto-export serializes the app's **full
-secret set** as JSON (secret names as keys, values as strings) and writes it to
-the password manager item. This ensures the backup is always a complete snapshot.
+after the local encrypted file is updated. Auto-export serializes the app's
+**full secret set** and writes it to the password manager item. This ensures the
+backup is always a complete snapshot.
 
 Identify all mutation points: account linking, secret set/delete, migration from
 legacy storage, token refresh.
@@ -102,9 +135,8 @@ it fails, set a dirty flag and move on.
 ### Warn + Nag Pattern
 
 When auto-export fails, warn immediately but do not fail the operation. Record
-pending secrets in a dirty flag file in the platform's app data directory
-(`~/.local/share/myapp/` on Linux, `~/Library/Application Support/myapp/` on
-macOS, `%APPDATA%/myapp/` on Windows). On successful export, clear it.
+the failure in a dirty flag file in the app's data directory. On successful
+export, clear it.
 
 | App type | Warning | Persistent nag |
 |---|---|---|
@@ -136,32 +168,28 @@ Automate in a dotfile manager (chezmoi `run_once`) for unattended bootstrap.
 
 ## Checklist
 
-- [ ] All secret reads from system keyring or daemon alternative (see Keyring Layer)
-- [ ] Runtime storage approach chosen (see [tradeoffs reference](references/runtime-storage-tradeoffs.md))
+- [ ] Single keychain entry holds encryption key (not one entry per secret)
+- [ ] Local encrypted file stores all secrets
+- [ ] Interpreted-language CLI uses OS CLI tools for keychain access
 - [ ] Every mutation point triggers auto-export (fire-and-forget)
 - [ ] Export to stdout / import from stdin with `--include-secrets` safety gate
 - [ ] Failed export sets dirty flag; successful export clears it
 - [ ] Nag mechanism matches app type
 - [ ] Config supports `backup_backend: none`
-- [ ] Restore works end-to-end on a clean keyring
-- [ ] Daemon context verified: keyring accessible, or alternative tier chosen
+- [ ] Restore verified end-to-end on a clean keychain with real data
+- [ ] Daemon context verified: keychain accessible, or alternative tier chosen
 - [ ] CI disables auto-export (`backup_backend: none`)
-- [ ] Headless/CI: app falls back to env vars (e.g., `MYAPP_SECRET_<NAME>`) when keyring unavailable
+- [ ] Headless/CI: app falls back to env vars when keyring unavailable
 
 ## Edge Cases
 
 - **Multiple machines** — import should merge by default: match by secret name,
-  skip if same name already exists in keyring. `--force` for full overwrite.
+  skip if same name already exists. `--force` for full overwrite.
 - **Token refresh** — refreshed tokens are mutations; trigger auto-export.
 - **Bulk migration** — export once at the end, not once per secret.
 - **Keyring locked** — let the OS prompt for unlock. Daemons should fail clearly
   and fall back to cached values if available.
 - **Headless/CI** — `backup_backend: none`, read secrets from env vars
   (`MYAPP_SECRET_<NAME>`) or CI secrets manager when keyring is unavailable.
-- **macOS binary identity** — interpreted-language CLIs (Python, Node, Ruby)
-  should use OS CLI tools to avoid re-authorization prompts when the interpreter
-  binary path changes. See [keyring-by-framework.md](references/keyring-by-framework.md).
-  For native apps, data protection keychain requires signed binary with
-  entitlements. Test unsigned dev builds against legacy keychain.
 - **Bootstrap secret for daemon SDK** — service account token stored on disk has
   same trust model as age identity file. Protect with filesystem permissions.
