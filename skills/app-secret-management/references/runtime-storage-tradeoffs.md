@@ -23,74 +23,52 @@ With one entry, re-authorization is one prompt. With twenty entries, it's twenty
 prompts. The encrypted store pattern makes this constant regardless of how many
 secrets the app manages.
 
-## Encrypted File Formats
+## Encryption Format: age
 
-### Fernet (recommended for Python CLIs)
+Use the **age** encryption format everywhere. One standard across all languages,
+interoperable files.
 
-Symmetric encryption from the `cryptography` package. No external tools
-required — pure Python dependency.
+### Python — `pyrage` library
+
+Rust-backed Python bindings for age. Pre-built wheels on PyPI — no Rust
+toolchain or external CLI needed.
 
 ```python
 import json
 from pathlib import Path
 
-from cryptography.fernet import Fernet
-
-def encrypt_secrets(secrets: dict, key: bytes, path: str) -> None:
-    f = Fernet(key)
-    plaintext = json.dumps(secrets).encode()
-    Path(path).write_bytes(f.encrypt(plaintext))
-
-def decrypt_secrets(key: bytes, path: str) -> dict:
-    f = Fernet(key)
-    ciphertext = Path(path).read_bytes()
-    return json.loads(f.decrypt(ciphertext))
-
-# Generate a new key (store this in keychain):
-# key = Fernet.generate_key()
-```
-
-### age-encrypted JSON
-
-Simple, CLI-composable, well-audited encryption. Requires `age` CLI as an
-external dependency (`brew install age` on macOS, package managers on Linux).
-Better suited for shell scripts or non-Python tools where `cryptography`
-isn't available.
-
-```python
-import json
-import os
-import subprocess
-from pathlib import Path
+from pyrage import passphrase
 
 def encrypt_secrets(secrets: dict, key: str, path: str) -> None:
-    """Encrypt secrets dict to file using age."""
-    plaintext = json.dumps(secrets, indent=2)
-    result = subprocess.run(
-        ["age", "--encrypt", "--passphrase", "-o", path],
-        input=plaintext, text=True, capture_output=True,
-        env={**os.environ, "AGE_PASSPHRASE": key},
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"age encrypt failed: {result.stderr}")
+    plaintext = json.dumps(secrets).encode()
+    Path(path).write_bytes(passphrase.encrypt(plaintext, key))
 
 def decrypt_secrets(key: str, path: str) -> dict:
-    """Decrypt secrets file using age."""
-    result = subprocess.run(
-        ["age", "--decrypt", path],
-        capture_output=True, text=True,
-        env={**os.environ, "AGE_PASSPHRASE": key},
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"age decrypt failed: {result.stderr}")
-    return json.loads(result.stdout)
+    ciphertext = Path(path).read_bytes()
+    return json.loads(passphrase.decrypt(ciphertext, key))
 ```
 
-### SOPS-encrypted YAML
+### Non-Python CLIs / shell scripts — `age` CLI
 
-Best when secrets are mixed into config files. Only values are encrypted;
-keys and structure remain readable for debugging. Requires `sops` and `age`
-as external dependencies.
+```bash
+# Encrypt
+echo '{"api_key": "sk-..."}' | AGE_PASSPHRASE="$KEY" age --encrypt --passphrase -o secrets.age
+
+# Decrypt
+AGE_PASSPHRASE="$KEY" age --decrypt secrets.age
+```
+
+Available via Homebrew (`brew install age`), most Linux package managers, and
+as a static binary.
+
+### Config files with mixed secrets — SOPS + age
+
+Only values are encrypted; keys and structure remain readable for debugging.
+
+```bash
+sops --encrypt --age $(age-keygen -y key.txt) config.yaml > config.enc.yaml
+sops --decrypt config.enc.yaml
+```
 
 ```bash
 # Encrypt (using age key stored in keychain)

@@ -101,15 +101,14 @@ inaccessible — use one of these alternatives:
 ### Encrypted Local Store
 
 The local secrets file is encrypted with the key from the single keychain entry.
-Format options:
+Use the **age** encryption format — one standard across all languages:
 
-- **Fernet (Python)** — symmetric encryption from the `cryptography` package.
-  No external tools needed. Recommended for Python CLIs.
-- **age-encrypted JSON** — CLI-composable, well-audited. Requires `age` CLI as
-  an external dependency. Better for shell scripts or non-Python tools.
-- **SOPS-encrypted YAML** — works well when secrets are mixed into config files.
-  Only secret values are encrypted; keys and structure remain readable.
-  Requires `sops` and `age` as external dependencies.
+- **Python:** `pyrage` library (Rust-backed, pre-built wheels, no CLI needed)
+- **Non-Python CLIs / shell scripts:** `age` CLI
+- **Config files with mixed secrets:** SOPS + age (only values encrypted)
+
+See [runtime-storage-tradeoffs.md](references/runtime-storage-tradeoffs.md) for
+code examples.
 
 The encrypted file lives in the app's data directory (`~/.local/share/myapp/` on
 Linux, `~/Library/Application Support/myapp/` on macOS). Protect with filesystem
