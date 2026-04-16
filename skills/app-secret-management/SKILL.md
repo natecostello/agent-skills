@@ -103,12 +103,13 @@ inaccessible — use one of these alternatives:
 The local secrets file is encrypted with the key from the single keychain entry.
 Format options:
 
-- **age-encrypted JSON** — simple, CLI-composable. Encrypt with `age`, decrypt
-  at startup using the keychain-stored key.
 - **Fernet (Python)** — symmetric encryption from the `cryptography` package.
-  Simple key management, no external tools needed.
+  No external tools needed. Recommended for Python CLIs.
+- **age-encrypted JSON** — CLI-composable, well-audited. Requires `age` CLI as
+  an external dependency. Better for shell scripts or non-Python tools.
 - **SOPS-encrypted YAML** — works well when secrets are mixed into config files.
   Only secret values are encrypted; keys and structure remain readable.
+  Requires `sops` and `age` as external dependencies.
 
 The encrypted file lives in the app's data directory (`~/.local/share/myapp/` on
 Linux, `~/Library/Application Support/myapp/` on macOS). Protect with filesystem

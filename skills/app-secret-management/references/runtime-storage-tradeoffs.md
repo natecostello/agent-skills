@@ -25,9 +25,37 @@ secrets the app manages.
 
 ## Encrypted File Formats
 
-### age-encrypted JSON (recommended for CLIs)
+### Fernet (recommended for Python CLIs)
 
-Simple, CLI-composable, well-audited encryption.
+Symmetric encryption from the `cryptography` package. No external tools
+required — pure Python dependency.
+
+```python
+import json
+from pathlib import Path
+
+from cryptography.fernet import Fernet
+
+def encrypt_secrets(secrets: dict, key: bytes, path: str) -> None:
+    f = Fernet(key)
+    plaintext = json.dumps(secrets).encode()
+    Path(path).write_bytes(f.encrypt(plaintext))
+
+def decrypt_secrets(key: bytes, path: str) -> dict:
+    f = Fernet(key)
+    ciphertext = Path(path).read_bytes()
+    return json.loads(f.decrypt(ciphertext))
+
+# Generate a new key (store this in keychain):
+# key = Fernet.generate_key()
+```
+
+### age-encrypted JSON
+
+Simple, CLI-composable, well-audited encryption. Requires `age` CLI as an
+external dependency (`brew install age` on macOS, package managers on Linux).
+Better suited for shell scripts or non-Python tools where `cryptography`
+isn't available.
 
 ```python
 import json
@@ -58,38 +86,11 @@ def decrypt_secrets(key: str, path: str) -> dict:
     return json.loads(result.stdout)
 ```
 
-Requires `age` CLI installed. Available via Homebrew (`brew install age`),
-most Linux package managers, and as a static binary.
-
-### Fernet (Python, no external tools)
-
-Symmetric encryption from the `cryptography` package. Good when you don't
-want to require `age` as a dependency.
-
-```python
-import json
-from pathlib import Path
-
-from cryptography.fernet import Fernet
-
-def encrypt_secrets(secrets: dict, key: bytes, path: str) -> None:
-    f = Fernet(key)
-    plaintext = json.dumps(secrets).encode()
-    Path(path).write_bytes(f.encrypt(plaintext))
-
-def decrypt_secrets(key: bytes, path: str) -> dict:
-    f = Fernet(key)
-    ciphertext = Path(path).read_bytes()
-    return json.loads(f.decrypt(ciphertext))
-
-# Generate a new key (store this in keychain):
-# key = Fernet.generate_key()
-```
-
 ### SOPS-encrypted YAML
 
 Best when secrets are mixed into config files. Only values are encrypted;
-keys and structure remain readable for debugging.
+keys and structure remain readable for debugging. Requires `sops` and `age`
+as external dependencies.
 
 ```bash
 # Encrypt (using age key stored in keychain)
