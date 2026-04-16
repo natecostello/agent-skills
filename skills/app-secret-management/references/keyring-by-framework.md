@@ -46,11 +46,13 @@ def keychain_get(service: str, account: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 def keychain_delete(service: str, account: str) -> None:
-    # Idempotent — succeeds silently if the entry doesn't exist
-    subprocess.run(
+    r = subprocess.run(
         ["security", "delete-generic-password", "-s", service, "-a", account],
         capture_output=True,
     )
+    # exit code 44 = item not found — treat as success (idempotent delete)
+    if r.returncode != 0 and r.returncode != 44:
+        raise RuntimeError(f"security delete-generic-password failed (exit {r.returncode})")
 ```
 
 **Linux** — `secret-tool` (freedesktop.org Secret Service):
