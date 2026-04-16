@@ -1,7 +1,7 @@
 # Keyring Access by Framework
 
 Read this reference when implementing the keyring layer for a specific framework
-or app type. The app stores **one keychain entry** (the encryption key for a
+or app type. The app stores **one keychain entry** (the age identity key for a
 local encrypted secrets file) — see the main skill and the
 [encrypted store implementation guide](encrypted-store-implementation.md) for implementation details.
 
@@ -18,7 +18,7 @@ each change requires manual re-authorization of the keychain entry.
 import subprocess
 
 SERVICE = "myapp"
-ACCOUNT = "encryption-key"
+ACCOUNT = "identity-key"
 
 def keychain_set(value: str) -> None:
     subprocess.run(
@@ -45,7 +45,7 @@ def keychain_delete() -> None:
 
 > **Note:** `add-generic-password -w <value>` passes the value via process
 > argv, briefly visible to other processes (e.g., `ps`). Since this is storing
-> an encryption key (not the actual secrets), the exposure is limited. This is
+> an age identity key (not the actual secrets), the exposure is limited. This is
 > the standard `security` CLI interface.
 
 **Linux** — `secret-tool` (freedesktop.org Secret Service):
@@ -54,7 +54,7 @@ def keychain_delete() -> None:
 import subprocess
 
 SERVICE = "myapp"
-ACCOUNT = "encryption-key"
+ACCOUNT = "identity-key"
 
 def keychain_set(value: str) -> None:
     subprocess.run(
@@ -90,7 +90,7 @@ library-based keyring access works without the binary-identity problem.
 **Go:** `zalando/go-keyring` — wraps macOS Keychain, Windows Credential Manager,
 Linux D-Bus Secret Service.
 
-Use the app's name as the service name. One entry for the encryption key.
+Use the app's name as the service name. One entry for the age identity key.
 
 ## Electron Apps
 

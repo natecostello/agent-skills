@@ -12,7 +12,7 @@ description: >-
 license: MIT
 metadata:
   author: natecostello
-  version: "4.0"
+  version: "4.1"
 ---
 
 # App Secret Management
@@ -26,10 +26,10 @@ and nag mechanism vary by context.
 
 ## Core Principles
 
-1. **One keychain entry per app.** Store a single encryption key in the OS
-   keychain. All secrets live in a local encrypted file, encrypted with that key.
-   This bounds ACL exposure to one entry — if it ever needs re-authorization,
-   it's one action, not one per secret.
+1. **One keychain entry per app.** Store a single age identity key in the OS
+   keychain. All secrets live in a local encrypted file, encrypted to that
+   identity's public recipient. This bounds ACL exposure to one entry — if it
+   ever needs re-authorization, it's one action, not one per secret.
 
 2. **OS CLI tools for interpreted languages on macOS/Linux.** Python, Node,
    Ruby CLIs on macOS/Linux access the keychain via OS CLI tools (`security`
@@ -55,7 +55,7 @@ and nag mechanism vary by context.
 
 ```
 App startup:
-  1. Read encryption key from keychain (single OS keychain entry)
+  1. Read age identity key from keychain (single OS keychain entry)
   2. Decrypt local secrets file
   3. Secrets available in memory
 
@@ -71,7 +71,7 @@ New machine:
 
 ### Keyring Layer
 
-One keychain entry holds the encryption key for the local secrets file. See
+One keychain entry holds the age identity key for the local secrets file. See
 [keyring-by-framework.md](references/keyring-by-framework.md) for per-framework
 code examples.
 
@@ -101,12 +101,16 @@ inaccessible — use one of these alternatives:
 
 ### Encrypted Local Store
 
-The local secrets file is encrypted with the key from the single keychain entry.
-Use the **age** encryption format — one standard across all languages:
+The local secrets file is encrypted with the age identity key from the single
+keychain entry. Use the **age** encryption format with **identity keys** (not
+passphrase mode) — one standard across all languages:
 
 - **Python:** `pyrage` library (Rust-backed, pre-built wheels, no CLI needed)
 - **Non-Python CLIs / shell scripts:** `age` CLI
 - **Config files with mixed secrets:** SOPS + age (only values encrypted)
+
+Identity key mode (X25519) decrypts instantly. Passphrase mode runs scrypt
+(~1 s per decrypt) — wasted when the keychain already holds a high-entropy key.
 
 See [encrypted-store-implementation.md](references/encrypted-store-implementation.md) for
 code examples.
@@ -168,7 +172,7 @@ Automate in a dotfile manager (chezmoi `run_once`) for unattended bootstrap.
 
 ## Checklist
 
-- [ ] Single keychain entry holds encryption key (not one entry per secret)
+- [ ] Single keychain entry holds age identity key (not one entry per secret)
 - [ ] Local encrypted file stores all secrets
 - [ ] Interpreted-language CLI uses OS CLI tools for keychain access
 - [ ] Every mutation point triggers auto-export (fire-and-forget)

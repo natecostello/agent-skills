@@ -5,9 +5,10 @@ keychain entry + local encrypted file pattern.
 
 ## How It Works
 
-One keychain entry holds an encryption key. All app secrets live in a local
-encrypted file, encrypted with that key. At startup, the app reads the key from
-the keychain, decrypts the file, and holds secrets in memory.
+One keychain entry holds an age identity key (`AGE-SECRET-KEY-1...`). All app
+secrets live in a local encrypted file, encrypted to that identity's public
+recipient. At startup, the app reads the identity key from the keychain,
+decrypts the file, and holds secrets in memory.
 
 This is the same pattern VS Code uses (via Electron `safeStorage`): one keychain
 entry for encryption, encrypted buffers in local storage.
@@ -28,6 +29,17 @@ secrets the app manages.
 Use the **age** encryption format everywhere. One standard across all languages,
 interoperable files.
 
+**Use identity keys, not passphrase mode.** Age passphrase mode runs scrypt (a
+deliberately slow KDF) on every decrypt — roughly 1 second with age's default
+parameters, which are fixed in the spec and not tunable. Since the keychain
+already stores a high-entropy machine-generated key, scrypt's brute-force
+protection is wasted. Identity key mode uses X25519 key agreement + symmetric
+decrypt, which is effectively instant.
+
+The keychain stores the identity key string (a single ~74-character
+`AGE-SECRET-KEY-1...` value). The public recipient needed for encryption is
+derived on the fly from the identity — no separate key to manage.
+
 ### Python — `pyrage` library
 
 Rust-backed Python bindings for age. Pre-built wheels on PyPI — no Rust
@@ -37,31 +49,41 @@ toolchain or external CLI needed.
 import json
 from pathlib import Path
 
-from pyrage import passphrase
+import pyrage
+from pyrage import x25519
 
-def encrypt_secrets(secrets: dict, key: str, path: str) -> None:
+def generate_identity() -> str:
+    """Generate a new age identity key. Store the returned string in the keychain."""
+    return str(x25519.Identity.generate())
+
+def encrypt_secrets(secrets: dict, identity_str: str, path: str) -> None:
+    identity = x25519.Identity.from_str(identity_str)
+    recipient = identity.to_public()
     plaintext = json.dumps(secrets).encode()
-    Path(path).write_bytes(passphrase.encrypt(plaintext, key))
+    Path(path).write_bytes(pyrage.encrypt(plaintext, [recipient]))
 
-def decrypt_secrets(key: str, path: str) -> dict:
+def decrypt_secrets(identity_str: str, path: str) -> dict:
+    identity = x25519.Identity.from_str(identity_str)
     ciphertext = Path(path).read_bytes()
-    return json.loads(passphrase.decrypt(ciphertext, key))
+    return json.loads(pyrage.decrypt(ciphertext, [identity]))
 ```
 
 ### Non-Python CLIs / shell scripts — `age` CLI
 
-> **Note:** Avoid passing the passphrase via `AGE_PASSPHRASE` in the
-> environment unless you have no better option — on many systems, environment
-> variables are visible to same-user processes and may be captured in crash
-> reports or logs. In practice the passphrase here is read from the keychain
-> into a short-lived variable, limiting exposure.
+The keychain stores the age identity key (`AGE-SECRET-KEY-1...`). Write it to a
+temporary file for the `age` CLI, or pipe it via process substitution.
 
 ```bash
-# Encrypt ($KEY read from keychain, held in shell variable)
-echo '{"api_key": "sk-..."}' | AGE_PASSPHRASE="$KEY" age --encrypt --passphrase -o secrets.age
+# Generate identity (once, during first-run setup)
+age-keygen 2>/dev/null  # outputs AGE-SECRET-KEY-1... to stdout
+# Store the secret key line in the keychain; derive the recipient:
+RECIPIENT=$(echo "$IDENTITY_KEY" | age-keygen -y)
 
-# Decrypt
-AGE_PASSPHRASE="$KEY" age --decrypt secrets.age
+# Encrypt
+echo '{"api_key": "sk-..."}' | age --encrypt --recipient "$RECIPIENT" -o secrets.age
+
+# Decrypt (pipe identity via process substitution — no temp file on disk)
+age --decrypt --identity <(echo "$IDENTITY_KEY") secrets.age
 ```
 
 Available via Homebrew (`brew install age`), most Linux package managers, and
@@ -72,15 +94,15 @@ as a static binary.
 Only values are encrypted; keys and structure remain readable for debugging.
 
 ```bash
-# After loading the age recipient/private key from the keychain into env vars:
-#   AGE_RECIPIENT=age1...
-#   SOPS_AGE_KEY=AGE-SECRET-KEY-...
+# After loading the age identity key from the keychain:
+#   IDENTITY_KEY=AGE-SECRET-KEY-1...
+RECIPIENT=$(echo "$IDENTITY_KEY" | age-keygen -y)
 
 # Encrypt
-sops --encrypt --age "$AGE_RECIPIENT" config.yaml > config.enc.yaml
+sops --encrypt --age "$RECIPIENT" config.yaml > config.enc.yaml
 
 # Decrypt
-SOPS_AGE_KEY="$SOPS_AGE_KEY" sops --decrypt config.enc.yaml
+SOPS_AGE_KEY="$IDENTITY_KEY" sops --decrypt config.enc.yaml
 ```
 
 ## File Location
@@ -97,12 +119,12 @@ Protect with filesystem permissions (chmod 600 on Unix).
 
 ## Key Rotation
 
-To rotate the encryption key:
+To rotate the identity key:
 
-1. Decrypt with old key
-2. Generate new key
-3. Re-encrypt with new key
-4. Store new key in keychain (overwrites old)
+1. Decrypt with old identity
+2. Generate new identity (`x25519.Identity.generate()` / `age-keygen`)
+3. Re-encrypt with new identity's public recipient
+4. Store new identity key string in keychain (overwrites old)
 5. Trigger auto-export (backup the new state)
 
 This is a single keychain write — no ACL concerns.
