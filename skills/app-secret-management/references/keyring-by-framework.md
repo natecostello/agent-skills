@@ -3,10 +3,85 @@
 Read this reference when implementing the keyring layer for a specific framework
 or app type.
 
-## CLI and Library-Based Apps
+## Interpreted-Language CLIs (Python, Node, Ruby, etc.)
 
-**Python:** `keyring` library (auto-detects backend: macOS Keychain, Windows
-Credential Locker, Linux Secret Service via D-Bus)
+**macOS binary-identity problem:** macOS Keychain ties access control to the
+binary that created each entry. Interpreted-language CLIs run through an
+interpreter binary (`python3`, `node`, `ruby`) whose path changes on version
+upgrades, venv rebuilds, `uv tool install`, `nvm use`, `rbenv` switches, etc.
+When the path changes, macOS prompts for re-authorization — once per keychain
+entry. This is a fundamental macOS security model constraint with no upstream fix.
+
+**Recommendation:** Use OS-native CLI tools via subprocess. These are always
+authorized (system-signed binaries with stable paths) and never trigger re-auth.
+
+**macOS** — `security` (Apple-signed, always in `/usr/bin/`):
+```python
+import subprocess, json
+
+def keychain_set(service: str, account: str, password: str) -> None:
+    # delete first to avoid "already exists" error on update
+    subprocess.run(
+        ["security", "delete-generic-password", "-s", service, "-a", account],
+        capture_output=True,  # ignore "not found" errors
+    )
+    subprocess.run(
+        ["security", "add-generic-password", "-s", service, "-a", account,
+         "-w", password, "-U"],
+        check=True,
+    )
+
+def keychain_get(service: str, account: str) -> str | None:
+    r = subprocess.run(
+        ["security", "find-generic-password", "-s", service, "-a", account, "-w"],
+        capture_output=True, text=True,
+    )
+    return r.stdout.strip() if r.returncode == 0 else None
+
+def keychain_delete(service: str, account: str) -> None:
+    subprocess.run(
+        ["security", "delete-generic-password", "-s", service, "-a", account],
+        check=True,
+    )
+```
+
+**Linux** — `secret-tool` (freedesktop.org Secret Service):
+```python
+import subprocess
+
+def keyring_set(service: str, account: str, password: str) -> None:
+    subprocess.run(
+        ["secret-tool", "store", "--label", f"{service}/{account}",
+         "service", service, "account", account],
+        input=password.encode(), check=True,
+    )
+
+def keyring_get(service: str, account: str) -> str | None:
+    r = subprocess.run(
+        ["secret-tool", "lookup", "service", service, "account", account],
+        capture_output=True, text=True,
+    )
+    return r.stdout.strip() if r.returncode == 0 else None
+
+def keyring_delete(service: str, account: str) -> None:
+    subprocess.run(
+        ["secret-tool", "clear", "service", service, "account", account],
+        check=True,
+    )
+```
+
+**Cross-platform wrapper:** Detect the platform at startup and dispatch to the
+appropriate functions above. For Windows (no binary-identity issue), the Python
+`keyring` library is fine.
+
+**Fallback — Python `keyring` library:** If OS CLI tools are unavailable, the
+`keyring` library works but be aware of the macOS binary-identity issue. Every
+Python binary path change (venv rebuild, version upgrade, `uv tool install`)
+will trigger one re-authorization prompt per keychain entry. This is tolerable
+for 1-2 secrets but painful at scale — see
+[runtime-storage-tradeoffs.md](runtime-storage-tradeoffs.md) for mitigation via
+encrypted store.
+
 ```python
 import keyring
 
@@ -14,6 +89,11 @@ keyring.set_password("myapp", key, value)    # store
 keyring.get_password("myapp", key)           # retrieve
 keyring.delete_password("myapp", key)        # remove
 ```
+
+## Compiled-Language CLIs (Go, Rust, etc.)
+
+Compiled binaries have stable identity — the binary IS the app — so
+library-based keyring access works without the binary-identity problem.
 
 **Rust:** `keyring` crate — maps `(service, user)` pairs to platform stores.
 **Go:** `zalando/go-keyring` — wraps macOS Keychain, Windows Credential Manager,
@@ -52,9 +132,6 @@ Security framework: `SecItemAdd`, `SecItemCopyMatching`, `SecItemUpdate`,
 Prefer the data protection keychain (`kSecUseDataProtectionKeychain`) over
 legacy file-based keychains — uses code signing entitlements instead of ACLs,
 eliminating user prompts for apps in the same access group.
-
-**Python on macOS:** `pyobjc-framework-Security` for direct bindings to
-`SecItemAdd`/`SecItemCopyMatching` without shelling out to `/usr/bin/security`.
 
 ## Native Windows
 
