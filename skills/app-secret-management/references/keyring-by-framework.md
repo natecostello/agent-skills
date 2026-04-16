@@ -12,16 +12,20 @@ upgrades, venv rebuilds, `uv tool install`, `nvm use`, `rbenv` switches, etc.
 When the path changes, macOS prompts for re-authorization — once per keychain
 entry. This is a fundamental macOS security model constraint with no upstream fix.
 
-**Recommendation:** Use OS-native CLI tools via subprocess. These are always
-authorized (system-signed binaries with stable paths) and never trigger re-auth.
+**Recommendation:** Use OS-native CLI tools via subprocess. Their binary
+identity is stable (system-signed, fixed paths), so they avoid the
+re-authorization churn caused by interpreter path changes. (Other keychain
+prompts — locked keychain, new ACL decisions — can still occur.)
 
 **macOS** — `security` (Apple-signed, always in `/usr/bin/`):
 
-> **Note:** `-w` passes the password via process argv, which is briefly visible
-> to other processes (e.g., `ps`). This is the standard `security` CLI interface
-> and is generally accepted for CLI tools on macOS. For high-sensitivity secrets,
-> consider the encrypted store approach (single keychain entry) to minimize
-> exposure — see [runtime-storage-tradeoffs.md](runtime-storage-tradeoffs.md).
+> **Note:** `add-generic-password -w <password>` passes the secret via process
+> argv, which is briefly visible to other processes (e.g., `ps`). The `-w` flag
+> on `find-generic-password` only requests output and does not expose secrets in
+> argv. This is the standard `security` CLI interface and is generally accepted
+> for CLI tools on macOS. For high-sensitivity secrets, consider the encrypted
+> store approach (single keychain entry) to minimize exposure — see
+> [runtime-storage-tradeoffs.md](runtime-storage-tradeoffs.md).
 
 ```python
 import subprocess

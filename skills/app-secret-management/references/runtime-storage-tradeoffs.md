@@ -56,10 +56,11 @@ local encrypted file. This makes encrypted store the safer default for
 interpreted-language CLIs with more than 2-3 secrets.
 
 Note: using OS CLI tools (`security` on macOS, `secret-tool` on Linux) instead
-of library-based keyring access avoids the binary-identity problem entirely —
-see [keyring-by-framework.md](keyring-by-framework.md). But minimizing keychain
-entries via encrypted store is still good defensive design for resilience against
-other ACL edge cases (code signing changes, keychain migrations).
+of library-based keyring access avoids the interpreter-binary re-authorization
+churn — see [keyring-by-framework.md](keyring-by-framework.md). But minimizing
+keychain entries via encrypted store is still good defensive design for
+resilience against other ACL edge cases (code signing changes, keychain
+migrations, locked keychain prompts).
 
 ## Encrypted Store Formats
 

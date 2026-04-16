@@ -64,9 +64,9 @@ code examples.
 (`security` on macOS, `secret-tool` on Linux) over library-based keyring access.
 On macOS, keychain ACLs are tied to the interpreter binary path — when it
 changes (venv rebuild, version upgrade, `nvm use`), every keychain entry
-requires re-authorization. OS CLI tools are system-signed with stable paths and
-never trigger re-auth. See the reference doc for code examples and fallback
-guidance.
+requires re-authorization. OS CLI tools have stable binary identity
+(system-signed, fixed paths), avoiding this re-authorization churn. See the
+reference doc for code examples and fallback guidance.
 
 **Daemons:** If the service runs in user context (LaunchAgent, systemd user
 service), keyring access works normally. If headless or root, the keyring may be
