@@ -36,7 +36,7 @@ already stores a high-entropy machine-generated key, scrypt's brute-force
 protection is wasted. Identity key mode uses X25519 key agreement + symmetric
 decrypt, which is effectively instant.
 
-The keychain stores the identity key string (a single ~74-character
+The keychain stores the identity key string (a single 74-character
 `AGE-SECRET-KEY-1...` value). The public recipient needed for encryption is
 derived on the fly from the identity — no separate key to manage.
 
@@ -70,21 +70,26 @@ def decrypt_secrets(identity_str: str, path: str) -> dict:
 
 ### Non-Python CLIs / shell scripts — `age` CLI
 
-The keychain stores the age identity key (`AGE-SECRET-KEY-1...`). Write it to a
-temporary file for the `age` CLI, or pipe it via process substitution.
+The keychain stores the age identity key (`AGE-SECRET-KEY-1...`). Pipe it to
+the `age` CLI via process substitution — `echo` is a shell builtin, so the key
+never appears in `ps` output.
 
 ```bash
 # Generate identity (once, during first-run setup)
-age-keygen 2>/dev/null  # outputs AGE-SECRET-KEY-1... to stdout
+age-keygen 2>/dev/null | grep "^AGE-SECRET-KEY-"  # extract only the key line
 # Store the secret key line in the keychain; derive the recipient:
 RECIPIENT=$(echo "$IDENTITY_KEY" | age-keygen -y)
 
 # Encrypt
 echo '{"api_key": "sk-..."}' | age --encrypt --recipient "$RECIPIENT" -o secrets.age
 
-# Decrypt (pipe identity via process substitution — no temp file on disk)
+# Decrypt (process substitution — no temp file on disk)
 age --decrypt --identity <(echo "$IDENTITY_KEY") secrets.age
 ```
+
+> **Note:** Process substitution (`<(...)`) requires bash/zsh. In POSIX sh or
+> dash, write the identity to a temporary file (mode 600), decrypt, then remove
+> it.
 
 Available via Homebrew (`brew install age`), most Linux package managers, and
 as a static binary.
@@ -131,7 +136,7 @@ This is a single keychain write — no ACL concerns.
 
 ## Encrypted Store vs. Encrypted Backup
 
-The encrypted store is the **runtime** layer — the encryption key lives in the
+The encrypted store is the **runtime** layer — the identity key lives in the
 keychain, secrets live in a local file. The password manager is the **durable
 backup**. Don't use an encrypted file as a backup tier alongside a password
 manager — that creates two sources of truth with sync conflicts.

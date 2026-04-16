@@ -79,7 +79,7 @@ def keychain_delete() -> None:
 
 **Cross-platform wrapper:** Detect the platform at startup and dispatch to the
 appropriate functions above. For Windows (no binary-identity issue), the Python
-`keyring` library is fine for accessing the single encryption key entry.
+`keyring` library is fine for accessing the single identity key entry.
 
 ## Compiled-Language CLIs (Go, Rust, etc.)
 
