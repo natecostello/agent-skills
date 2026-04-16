@@ -12,7 +12,7 @@ description: >-
 license: MIT
 metadata:
   author: natecostello
-  version: "3.0"
+  version: "3.1"
 ---
 
 # App Secret Management
@@ -58,7 +58,15 @@ choosing between them.
 Use the platform's keyring abstraction. Never store secrets in plaintext config
 files or databases. See
 [keyring-by-framework.md](references/keyring-by-framework.md) for per-framework
-code examples (Python `keyring`, Electron `safeStorage`, Tauri, Swift, DPAPI).
+code examples.
+
+**Interpreted-language CLIs (Python, Node, Ruby):** Prefer OS CLI tools
+(`security` on macOS, `secret-tool` on Linux) over library-based keyring access.
+On macOS, keychain ACLs are tied to the interpreter binary path — when it
+changes (venv rebuild, version upgrade, `nvm use`), every keychain entry
+requires re-authorization. OS CLI tools have stable binary identity
+(system-signed, fixed paths), avoiding this re-authorization churn. See the
+reference doc for code examples and fallback guidance.
 
 **Daemons:** If the service runs in user context (LaunchAgent, systemd user
 service), keyring access works normally. If headless or root, the keyring may be
@@ -150,7 +158,10 @@ Automate in a dotfile manager (chezmoi `run_once`) for unattended bootstrap.
   and fall back to cached values if available.
 - **Headless/CI** — `backup_backend: none`, read secrets from env vars
   (`MYAPP_SECRET_<NAME>`) or CI secrets manager when keyring is unavailable.
-- **macOS code signing** — data protection keychain requires signed binary with
+- **macOS binary identity** — interpreted-language CLIs (Python, Node, Ruby)
+  should use OS CLI tools to avoid re-authorization prompts when the interpreter
+  binary path changes. See [keyring-by-framework.md](references/keyring-by-framework.md).
+  For native apps, data protection keychain requires signed binary with
   entitlements. Test unsigned dev builds against legacy keychain.
 - **Bootstrap secret for daemon SDK** — service account token stored on disk has
   same trust model as age identity file. Protect with filesystem permissions.

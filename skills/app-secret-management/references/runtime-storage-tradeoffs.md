@@ -34,11 +34,33 @@ linked institution, per-user credentials in a multi-account app). Avoids
 keychain pollution, makes bulk export trivial, and is significantly faster for
 apps that read many secrets at startup.
 
-The tipping point is around 10 secrets. Below that, direct keyring is simpler
-and the overhead is negligible. Above that, keychain pollution and slow
-enumeration become real costs. Apps with dynamic/growing secret counts (e.g., one
-token per linked account) should use encrypted store from the start since the
-count is unbounded.
+The tipping point is around 10 secrets for compiled apps. Below that, direct
+keyring is simpler and the overhead is negligible. Above that, keychain
+pollution and slow enumeration become real costs. Apps with dynamic/growing
+secret counts (e.g., one token per linked account) should use encrypted store
+from the start since the count is unbounded.
+
+### Interpreted-language CLIs: lower tipping point
+
+For CLI apps written in Python, Node, Ruby, or other interpreted languages, the
+tipping point is lower — even a handful of direct keyring entries can be
+painful. On macOS, keychain ACLs are tied to the binary that accessed each
+entry. When the interpreter binary path changes (venv rebuild, version upgrade,
+`nvm use`, etc.), macOS prompts for re-authorization **once per keychain
+entry**. With direct keyring, this scales linearly with secret count: 3 secrets
+= 3 prompts, 22 secrets = 22 prompts.
+
+The encrypted store approach bounds this to a single re-authorization (for the
+one encryption key entry), regardless of how many secrets are stored in the
+local encrypted file. This makes encrypted store the safer default for
+interpreted-language CLIs with more than 2-3 secrets.
+
+Note: using OS CLI tools (`security` on macOS, `secret-tool` on Linux) instead
+of library-based keyring access avoids the interpreter-binary re-authorization
+churn — see [keyring-by-framework.md](keyring-by-framework.md). But minimizing
+keychain entries via encrypted store is still good defensive design for
+resilience against other ACL edge cases (code signing changes, keychain
+migrations, locked keychain prompts).
 
 ## Encrypted Store Formats
 
