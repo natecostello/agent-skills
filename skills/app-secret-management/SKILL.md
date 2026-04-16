@@ -1,265 +1,156 @@
 ---
 name: app-secret-management
 description: >-
-  Guides implementation of CLI secret management using the system keyring +
-  password manager pattern. Use when a project needs to store API keys, tokens,
-  or credentials — especially when secrets must survive machine rebuilds. Triggers
-  on: secret storage, keyring integration, credential backup, password manager
+  Guides implementation of secret management for any local application (CLI,
+  GUI, web app, daemon) using the system keyring + password manager pattern.
+  Use when a project needs to store API keys, tokens, or credentials —
+  especially when secrets must survive machine rebuilds. Triggers on: secret
+  storage, keyring integration, credential backup, password manager
   export/import, Plaid tokens, API key management, machine migration, dotfile
-  bootstrap, or any discussion of durable secret backup for CLI tools.
+  bootstrap, daemon secrets, Electron safeStorage, SOPS, age encryption, or
+  any discussion of durable secret backup for local applications.
 license: MIT
 metadata:
   author: natecostello
-  version: "1.0"
+  version: "3.0"
 ---
 
 # App Secret Management
 
-A reusable pattern for CLI applications that manage secrets: **system keyring for
-runtime, password manager for durable backup**. This is the industry-standard
-approach used by tools like `gh`, `aws`, and `docker` — delegate to existing
-infrastructure rather than building custom encryption.
+System keyring for runtime, password manager for durable backup. This is the
+industry-standard approach used by `gh`, `aws`, `docker`, and VS Code — delegate
+to existing infrastructure rather than building custom encryption.
+
+Applies across app types (CLI, GUI, web app, daemon) — the keyring access method
+and nag mechanism vary by context.
 
 ## Core Principles
 
-1. **System keyring is the runtime store.** All secret reads at runtime come from
-   the OS keyring (macOS Keychain, GNOME Keyring, Windows Credential Manager).
-   Fast, secure, no passphrase prompts.
+1. **System keyring is the runtime store.** All secret reads come from the OS
+   keyring (macOS Keychain, GNOME Keyring, Windows Credential Manager).
 
-2. **Password manager is the durable backup.** On every secret mutation
-   (create/update/delete), auto-export to the user's password manager. This is
-   the recovery path — on a new machine, one import restores everything.
+2. **Password manager is the durable backup.** On every secret mutation, auto-
+   export to the user's password manager. On a new machine, one import restores
+   everything.
 
-3. **Never block the primary operation.** If the password manager is unavailable
-   (not installed, not logged in, network down), the keyring operation succeeds
-   and the user gets a warning. Think `git commit` (always works offline) vs
-   `git push` (the durable backup, can fail without blocking work).
+3. **Never block the primary operation.** If the password manager is unavailable,
+   the keyring operation succeeds and the user gets a warning. Think `git commit`
+   (always works offline) vs `git push` (durable backup, can fail gracefully).
 
-4. **Composability via stdin/stdout.** Export produces text on stdout, import
-   reads from stdin. This lets users pipe through any password manager CLI
-   (`lpass`, `op`, `bw`, `pass`) without the app needing to know which one.
-
-## Why Not Encrypted Files?
-
-If the user already has a password manager, adding an age/GPG-encrypted file
-creates two sources of truth with sync conflicts. Tools like `pass` and `gopass`
-ARE the password manager — they replace LastPass, not supplement it. Tools that
-already have a password manager delegate to it.
-
-Only consider built-in encryption if the app must work in environments with no
-password manager at all (CI pipelines, containers). In that case, treat it as
-the password manager tier, not a third tier.
+4. **Composability via stdin/stdout.** Export to stdout, import from stdin. Pipes
+   through any password manager CLI (`lpass`, `op`, `bw`) without the app knowing
+   which one. See [keyring-by-framework.md](references/keyring-by-framework.md)
+   for pipe examples.
 
 ## Architecture
 
-```
-User runs command     ──►  Keyring (runtime)
-  that mutates a            │
-  secret                    ▼
-                       Password Manager (durable backup, auto)
-                            │
-New machine            ◄────┘  (import restores to keyring)
-```
+Runtime (keyring: direct or encrypted store) → auto-export → Password Manager (backup) → import on new machine
 
-## Implementation Guide
+**Two runtime approaches** — direct keyring (one entry per secret) or single
+keychain key + encrypted local store. Both are standard. Consult
+[runtime-storage-tradeoffs.md](references/runtime-storage-tradeoffs.md) when
+choosing between them.
 
-### 1. Keyring Layer
+## Implementation
 
-Use the platform's keyring abstraction. The app should never store secrets in
-config files, environment variables, or databases.
+### Keyring Layer
 
-**Python:** `keyring` library (auto-detects backend)
-```python
-import keyring
+Use the platform's keyring abstraction. Never store secrets in plaintext config
+files or databases. See
+[keyring-by-framework.md](references/keyring-by-framework.md) for per-framework
+code examples (Python `keyring`, Electron `safeStorage`, Tauri, Swift, DPAPI).
 
-keyring.set_password("myapp", key, value)    # store
-keyring.get_password("myapp", key)           # retrieve
-keyring.delete_password("myapp", key)        # remove
-```
+**Daemons:** If the service runs in user context (LaunchAgent, systemd user
+service), keyring access works normally. If headless or root, the keyring may be
+inaccessible — use one of these alternatives:
 
-**Node.js:** `keytar` library
-**Rust:** `keyring` crate
-**Go:** `zalando/go-keyring`
+1. **SOPS + age** — encrypted config, decrypted at startup with a local identity
+   file. Self-contained, no network or interactive unlock needed.
+2. **Password manager SDK** (1Password, Bitwarden) — fetch at startup via SDK.
+   Requires a bootstrap secret (service account token) stored on disk or in env,
+   same trust model as an age identity file but adds network dependency.
+3. **systemd credentials** (Linux) — kernel-protected, encrypted with TPM2 or
+   local key, delivered via `$CREDENTIALS_DIRECTORY`.
+4. **File-based keychain** (macOS) — dedicated `.keychain` file with password in
+   System Keychain. More moving parts but works for true LaunchDaemons.
 
-The service name (first arg) should be the app's name. Keep it consistent —
-every secret for the app uses the same service name.
+### Auto-Export on Mutation
 
-### 2. Auto-Export on Mutation
+Every command that creates, updates, or deletes a secret triggers auto-export
+after the keyring operation succeeds. Auto-export serializes the app's **full
+secret set** as JSON (secret names as keys, values as strings) and writes it to
+the password manager item. This ensures the backup is always a complete snapshot.
 
-Every command that creates, updates, or deletes a secret should trigger an
-auto-export after the keyring operation succeeds. Identify all mutation points
-in the codebase:
+Identify all mutation points: account linking, secret set/delete, migration from
+legacy storage, token refresh.
 
-- Account linking / OAuth token acquisition
-- Manual secret set commands
-- Secret deletion
-- Migration from legacy storage (config files, env vars)
-- Token refresh (if the app stores refreshed tokens)
+The export command should require an `--include-secrets` flag to include actual
+values in output — without it, export shows metadata only (key names, dates) to
+prevent accidental disclosure when piping to a terminal.
 
-The export should be **fire-and-forget** — do not add latency to the primary
-operation. If the export fails, set a dirty flag (see section 4) and move on.
+Export is **fire-and-forget** — never add latency to the primary operation. If
+it fails, set a dirty flag and move on.
 
-### 3. Export/Import via stdin/stdout
+### Warn + Nag Pattern
 
-The export format should be human-readable and machine-parseable. JSON is the
-default choice:
+When auto-export fails, warn immediately but do not fail the operation. Record
+pending secrets in a dirty flag file in the platform's app data directory
+(`~/.local/share/myapp/` on Linux, `~/Library/Application Support/myapp/` on
+macOS, `%APPDATA%/myapp/` on Windows). On successful export, clear it.
 
-```json
-{
-  "service": "myapp",
-  "exported_at": "2025-01-15T10:30:00Z",
-  "secrets": {
-    "api_key": "sk-...",
-    "plaid_access_token_chase": "access-prod-...",
-    "plaid_access_token_vanguard": "access-prod-..."
-  }
-}
-```
+| App type | Warning | Persistent nag |
+|---|---|---|
+| CLI | Terminal message | Message on subsequent commands |
+| GUI/Desktop | Toast / status bar | Badge or settings banner |
+| Web app | Log at startup | Health endpoint flag |
+| Daemon | syslog/journald | Health check endpoint |
 
-**Export command** writes to stdout:
-```bash
-myapp secrets export --include-secrets
-```
-
-**Import command** reads from stdin:
-```bash
-myapp secrets import --force < secrets.json
-```
-
-This composes with any password manager:
-```bash
-# Backup to LastPass
-myapp secrets export --include-secrets | lpass edit --notes myapp/secrets
-
-# Restore from LastPass
-lpass show --notes myapp/secrets | myapp secrets import --force
-
-# Backup to 1Password
-myapp secrets export --include-secrets | op item edit myapp/secrets notes=-
-
-# Restore from 1Password
-op item get myapp/secrets --fields notes | myapp secrets import --force
-```
-
-The `--include-secrets` flag is a safety gate — without it, export shows
-metadata only (key names, creation dates) so users don't accidentally pipe
-secrets to a terminal.
-
-### 4. Warn + Nag Pattern
-
-When the password manager is unavailable during auto-export:
-
-**Immediately:** Warn, but do not fail the command.
-```
-✓ Secret stored in keyring.
-⚠ Backup skipped (LastPass not logged in).
-  Run `myapp secrets export` when available.
-```
-
-**Set a dirty flag** that records which secrets are pending backup:
-```
-~/.local/share/myapp/backup_pending.json
-```
-```json
-{
-  "pending": ["api_key", "plaid_access_token_chase"],
-  "since": "2025-01-15T10:30:00Z"
-}
-```
-
-**On subsequent commands**, show a persistent reminder:
-```
-⚠ 2 secrets not backed up. Run `myapp secrets export` or log in to your password manager.
-```
-
-**On successful export**, clear the dirty flag.
-
-This follows the git model: `git commit` always works, your shell prompt shows
-"3 commits ahead" until you push, and `git push` clears the state.
-
-### 5. Configuration
-
-Add a secrets section to the app's config file:
+### Configuration
 
 ```yaml
 secrets:
   backup_backend: lastpass       # lastpass | 1password | bitwarden | none
-  backup_item: "myapp/secrets"   # item name/path in the password manager
+  backup_item: "myapp/secrets"   # item name in password manager
 ```
 
-- `backup_backend: none` disables auto-export entirely (opt-out for CI or
-  environments where no password manager exists).
-- The backend name maps to the CLI tool used for piping (`lpass`, `op`, `bw`).
-- Keep the config minimal — the app only needs to know which tool to call and
-  what to name the item.
+Add these fields to the app's existing config file. `backup_backend: none`
+disables auto-export (for CI or environments without a password manager).
 
-### 6. Restore on New Machine
-
-The full restore flow:
+### Restore on New Machine
 
 ```bash
-# 1. Install the app
-# 2. Log in to password manager
 lpass login user@example.com
-
-# 3. Restore all secrets in one command
 lpass show --notes myapp/secrets | myapp secrets import --force
-
-# 4. Verify
-myapp secrets list
+myapp secrets list  # verify
 ```
 
-This can be automated in a dotfile manager (chezmoi `run_once` script, or
-equivalent) for fully unattended machine bootstrap.
-
-## Testing Considerations
-
-- **Unit tests**: Mock the keyring backend. Test that mutation commands trigger
-  export. Test that export failure sets the dirty flag without failing the
-  command.
-- **Integration tests**: Use a test keyring backend (most keyring libraries
-  support in-memory or file-based backends for testing).
-- **CI**: Set `backup_backend: none` in CI config so tests don't try to call
-  password manager CLIs.
-- **Manual verification**: After implementing, run the full cycle: set a secret,
-  verify it's in the keyring, export, delete from keyring, import, verify
-  it's restored.
+Automate in a dotfile manager (chezmoi `run_once`) for unattended bootstrap.
 
 ## Checklist
 
-When implementing this pattern in a project, verify each item:
-
-- [ ] All secret reads come from the system keyring (no config files, no env vars)
-- [ ] Every mutation point triggers auto-export
-- [ ] Auto-export is fire-and-forget (never blocks or slows the primary operation)
-- [ ] Export writes to stdout, import reads from stdin
-- [ ] Export has a safety gate (`--include-secrets` or equivalent)
-- [ ] Failed export sets a dirty flag with pending secret names
-- [ ] Subsequent commands show a nag message when secrets are pending backup
-- [ ] Successful export clears the dirty flag
-- [ ] Config supports `backup_backend: none` to disable auto-export
-- [ ] Restore from password manager works end-to-end on a clean keyring
-- [ ] CI config disables auto-export
+- [ ] All secret reads from system keyring or daemon alternative (see Keyring Layer)
+- [ ] Runtime storage approach chosen (see [tradeoffs reference](references/runtime-storage-tradeoffs.md))
+- [ ] Every mutation point triggers auto-export (fire-and-forget)
+- [ ] Export to stdout / import from stdin with `--include-secrets` safety gate
+- [ ] Failed export sets dirty flag; successful export clears it
+- [ ] Nag mechanism matches app type
+- [ ] Config supports `backup_backend: none`
+- [ ] Restore works end-to-end on a clean keyring
+- [ ] Daemon context verified: keyring accessible, or alternative tier chosen
+- [ ] CI disables auto-export (`backup_backend: none`)
+- [ ] Headless/CI: app falls back to env vars (e.g., `MYAPP_SECRET_<NAME>`) when keyring unavailable
 
 ## Edge Cases
 
-- **Multiple machines**: If Machine A links a new account while Machine B has a
-  stale backup, importing the stale backup on Machine A would overwrite the new
-  token. Import should merge by default (add missing, skip existing) with a
-  `--force` flag for full overwrite. Document this clearly.
-
-- **Token refresh**: If the app refreshes tokens (e.g., OAuth refresh tokens),
-  the refreshed token is a mutation — trigger auto-export. Otherwise the backup
-  goes stale silently.
-
-- **Bulk migration**: When migrating secrets from legacy storage (config file,
-  env vars), treat the entire migration as a single mutation — export once at
-  the end, not once per secret.
-
-- **Keyring locked**: On some systems the keyring may be locked (e.g., after
-  sleep). The keyring library will prompt for unlock. This is expected OS
-  behavior — do not try to work around it.
-
-- **Headless/CI**: No keyring available. Use `backup_backend: none` and inject
-  secrets via environment variables or a CI secrets manager. The app should
-  support reading from env vars as a fallback when no keyring is available.
+- **Multiple machines** — import should merge by default: match by secret name,
+  skip if same name already exists in keyring. `--force` for full overwrite.
+- **Token refresh** — refreshed tokens are mutations; trigger auto-export.
+- **Bulk migration** — export once at the end, not once per secret.
+- **Keyring locked** — let the OS prompt for unlock. Daemons should fail clearly
+  and fall back to cached values if available.
+- **Headless/CI** — `backup_backend: none`, read secrets from env vars
+  (`MYAPP_SECRET_<NAME>`) or CI secrets manager when keyring is unavailable.
+- **macOS code signing** — data protection keychain requires signed binary with
+  entitlements. Test unsigned dev builds against legacy keychain.
+- **Bootstrap secret for daemon SDK** — service account token stored on disk has
+  same trust model as age identity file. Protect with filesystem permissions.
