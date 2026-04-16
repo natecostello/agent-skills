@@ -1,84 +1,131 @@
-# Runtime Storage: Direct Keyring vs. Encrypted Store
+# Encrypted Store Implementation
 
-Read this reference when deciding how secrets are stored at runtime. Both
-approaches are standard; the right one depends on the application.
+Read this reference when implementing the encrypted local store — the single
+keychain entry + local encrypted file pattern.
 
-## The Two Approaches
+## How It Works
 
-**Direct keyring** — one keychain entry per secret. `gh` and `docker` use this.
+One keychain entry holds an encryption key. All app secrets live in a local
+encrypted file, encrypted with that key. At startup, the app reads the key from
+the keychain, decrypts the file, and holds secrets in memory.
 
-**Single key + encrypted store** — one keychain entry holds an encryption key,
-all secrets live in a local encrypted file or database. VS Code and Electron
-apps use this (via `safeStorage`).
+This is the same pattern VS Code uses (via Electron `safeStorage`): one keychain
+entry for encryption, encrypted buffers in local storage.
 
-## Comparison
+## Why One Entry
 
-| | Direct keyring | Single key + encrypted store |
-|---|---|---|
-| Implementation | Simple — just call keyring API | Extra layer: encrypt/decrypt + local file |
-| Secret count | Best for small, stable sets (under ~10) | Better for large or growing sets (10+) |
-| Bulk operations | Slow — one keychain call per secret | Fast — one unlock, then local I/O |
-| Backup/export | Must enumerate keychain entries | Copy one file (or serialize one object) |
-| Per-secret ACL | OS manages access per item | Single ACL on the encryption key |
-| Failure blast radius | Lose one entry, lose one secret | Corrupt file, lose all secrets |
-| Keychain pollution | One entry per secret in user's keychain | One entry total |
+Each keychain entry is an independent ACL. On macOS, keychain ACLs are tied to
+the binary that accessed the entry. If the binary changes (interpreter upgrade,
+venv rebuild, app reinstall), every entry requires manual re-authorization —
+one password prompt per entry, each requiring the user's login password.
 
-## When to Use Which
+With one entry, re-authorization is one prompt. With twenty entries, it's twenty
+prompts. The encrypted store pattern makes this constant regardless of how many
+secrets the app manages.
 
-**Direct keyring** when the secret count is small and predictable (a handful of
-API keys, a fixed set of service credentials). Simpler to implement, no file
-format to maintain, and per-secret OS access control is a benefit.
+## Encrypted File Formats
 
-**Encrypted store** when secrets are numerous or grow dynamically (one token per
-linked institution, per-user credentials in a multi-account app). Avoids
-keychain pollution, makes bulk export trivial, and is significantly faster for
-apps that read many secrets at startup.
+### age-encrypted JSON (recommended for CLIs)
 
-The tipping point is around 10 secrets for compiled apps. Below that, direct
-keyring is simpler and the overhead is negligible. Above that, keychain
-pollution and slow enumeration become real costs. Apps with dynamic/growing
-secret counts (e.g., one token per linked account) should use encrypted store
-from the start since the count is unbounded.
+Simple, CLI-composable, well-audited encryption.
 
-### Interpreted-language CLIs: lower tipping point
+```python
+import json
+import os
+import subprocess
+from pathlib import Path
 
-For CLI apps written in Python, Node, Ruby, or other interpreted languages, the
-tipping point is lower — even a handful of direct keyring entries can be
-painful. On macOS, keychain ACLs are tied to the binary that accessed each
-entry. When the interpreter binary path changes (venv rebuild, version upgrade,
-`nvm use`, etc.), macOS prompts for re-authorization **once per keychain
-entry**. With direct keyring, this scales linearly with secret count: 3 secrets
-= 3 prompts, 22 secrets = 22 prompts.
+def encrypt_secrets(secrets: dict, key: str, path: str) -> None:
+    """Encrypt secrets dict to file using age."""
+    plaintext = json.dumps(secrets, indent=2)
+    result = subprocess.run(
+        ["age", "--encrypt", "--passphrase", "-o", path],
+        input=plaintext, text=True, capture_output=True,
+        env={**os.environ, "AGE_PASSPHRASE": key},
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"age encrypt failed: {result.stderr}")
 
-The encrypted store approach bounds this to a single re-authorization (for the
-one encryption key entry), regardless of how many secrets are stored in the
-local encrypted file. This makes encrypted store the safer default for
-interpreted-language CLIs with more than 2-3 secrets.
+def decrypt_secrets(key: str, path: str) -> dict:
+    """Decrypt secrets file using age."""
+    result = subprocess.run(
+        ["age", "--decrypt", path],
+        capture_output=True, text=True,
+        env={**os.environ, "AGE_PASSPHRASE": key},
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"age decrypt failed: {result.stderr}")
+    return json.loads(result.stdout)
+```
 
-Note: using OS CLI tools (`security` on macOS, `secret-tool` on Linux) instead
-of library-based keyring access avoids the interpreter-binary re-authorization
-churn — see [keyring-by-framework.md](keyring-by-framework.md). But minimizing
-keychain entries via encrypted store is still good defensive design for
-resilience against other ACL edge cases (code signing changes, keychain
-migrations, locked keychain prompts).
+Requires `age` CLI installed. Available via Homebrew (`brew install age`),
+most Linux package managers, and as a static binary.
 
-## Encrypted Store Formats
+### Fernet (Python, no external tools)
 
-- **age-encrypted JSON** — simple, CLI-composable. Encrypt with `age`, decrypt
-  at startup using keychain-stored key or age identity file.
-- **SQLite + safeStorage buffers** — Electron's approach. `safeStorage` encrypts
-  each value, store the buffers in SQLite.
-- **SOPS-encrypted YAML** — works well when secrets are mixed into config files.
-  Only secret values are encrypted; keys and structure remain readable.
+Symmetric encryption from the `cryptography` package. Good when you don't
+want to require `age` as a dependency.
 
-## Encrypted Store vs. Encrypted Backup — Not the Same Thing
+```python
+import json
+from pathlib import Path
 
-The encrypted store pattern is the **runtime** layer — the encryption key lives
-in the keychain, secrets live in a local file. The password manager is still the
-durable backup. Don't confuse this with using an encrypted file as a backup tier
-alongside a password manager — that creates two sources of truth with sync
-conflicts. Only use built-in encryption as the backup tier if no password manager
-is available (CI, containers).
+from cryptography.fernet import Fernet
 
-Both runtime approaches feed into the same password manager backup tier — this
-choice only affects local storage.
+def encrypt_secrets(secrets: dict, key: bytes, path: str) -> None:
+    f = Fernet(key)
+    plaintext = json.dumps(secrets).encode()
+    Path(path).write_bytes(f.encrypt(plaintext))
+
+def decrypt_secrets(key: bytes, path: str) -> dict:
+    f = Fernet(key)
+    ciphertext = Path(path).read_bytes()
+    return json.loads(f.decrypt(ciphertext))
+
+# Generate a new key (store this in keychain):
+# key = Fernet.generate_key()
+```
+
+### SOPS-encrypted YAML
+
+Best when secrets are mixed into config files. Only values are encrypted;
+keys and structure remain readable for debugging.
+
+```bash
+# Encrypt (using age key stored in keychain)
+sops --encrypt --age $(age-keygen -y key.txt) config.yaml > config.enc.yaml
+
+# Decrypt
+sops --decrypt config.enc.yaml
+```
+
+## File Location
+
+Store the encrypted file in the app's data directory:
+
+| Platform | Path |
+|---|---|
+| macOS | `~/Library/Application Support/myapp/secrets.age` |
+| Linux | `~/.local/share/myapp/secrets.age` |
+| Windows | `%APPDATA%/myapp/secrets.age` |
+
+Protect with filesystem permissions (chmod 600 on Unix).
+
+## Key Rotation
+
+To rotate the encryption key:
+
+1. Decrypt with old key
+2. Generate new key
+3. Re-encrypt with new key
+4. Store new key in keychain (overwrites old)
+5. Trigger auto-export (backup the new state)
+
+This is a single keychain write — no ACL concerns.
+
+## Encrypted Store vs. Encrypted Backup
+
+The encrypted store is the **runtime** layer — the encryption key lives in the
+keychain, secrets live in a local file. The password manager is the **durable
+backup**. Don't use an encrypted file as a backup tier alongside a password
+manager — that creates two sources of truth with sync conflicts.
