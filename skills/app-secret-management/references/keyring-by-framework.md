@@ -16,15 +16,18 @@ entry. This is a fundamental macOS security model constraint with no upstream fi
 authorized (system-signed binaries with stable paths) and never trigger re-auth.
 
 **macOS** — `security` (Apple-signed, always in `/usr/bin/`):
+
+> **Note:** `-w` passes the password via process argv, which is briefly visible
+> to other processes (e.g., `ps`). This is the standard `security` CLI interface
+> and is generally accepted for CLI tools on macOS. For high-sensitivity secrets,
+> consider the encrypted store approach (single keychain entry) to minimize
+> exposure — see [runtime-storage-tradeoffs.md](runtime-storage-tradeoffs.md).
+
 ```python
-import subprocess, json
+import subprocess
 
 def keychain_set(service: str, account: str, password: str) -> None:
-    # delete first to avoid "already exists" error on update
-    subprocess.run(
-        ["security", "delete-generic-password", "-s", service, "-a", account],
-        capture_output=True,  # ignore "not found" errors
-    )
+    # -U updates the item if it already exists, or creates it if not
     subprocess.run(
         ["security", "add-generic-password", "-s", service, "-a", account,
          "-w", password, "-U"],
@@ -39,9 +42,10 @@ def keychain_get(service: str, account: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 def keychain_delete(service: str, account: str) -> None:
+    # Idempotent — succeeds silently if the entry doesn't exist
     subprocess.run(
         ["security", "delete-generic-password", "-s", service, "-a", account],
-        check=True,
+        capture_output=True,
     )
 ```
 
