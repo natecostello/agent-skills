@@ -50,8 +50,14 @@ def decrypt_secrets(key: str, path: str) -> dict:
 
 ### Non-Python CLIs / shell scripts — `age` CLI
 
+> **Note:** Avoid passing the passphrase via `AGE_PASSPHRASE` in the
+> environment unless you have no better option — on many systems, environment
+> variables are visible to same-user processes and may be captured in crash
+> reports or logs. In practice the passphrase here is read from the keychain
+> into a short-lived variable, limiting exposure.
+
 ```bash
-# Encrypt
+# Encrypt ($KEY read from keychain, held in shell variable)
 echo '{"api_key": "sk-..."}' | AGE_PASSPHRASE="$KEY" age --encrypt --passphrase -o secrets.age
 
 # Decrypt
@@ -66,16 +72,15 @@ as a static binary.
 Only values are encrypted; keys and structure remain readable for debugging.
 
 ```bash
-sops --encrypt --age $(age-keygen -y key.txt) config.yaml > config.enc.yaml
-sops --decrypt config.enc.yaml
-```
+# After loading the age recipient/private key from the keychain into env vars:
+#   AGE_RECIPIENT=age1...
+#   SOPS_AGE_KEY=AGE-SECRET-KEY-...
 
-```bash
-# Encrypt (using age key stored in keychain)
-sops --encrypt --age $(age-keygen -y key.txt) config.yaml > config.enc.yaml
+# Encrypt
+sops --encrypt --age "$AGE_RECIPIENT" config.yaml > config.enc.yaml
 
 # Decrypt
-sops --decrypt config.enc.yaml
+SOPS_AGE_KEY="$SOPS_AGE_KEY" sops --decrypt config.enc.yaml
 ```
 
 ## File Location

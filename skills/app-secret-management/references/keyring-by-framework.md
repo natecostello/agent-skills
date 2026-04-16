@@ -2,8 +2,8 @@
 
 Read this reference when implementing the keyring layer for a specific framework
 or app type. The app stores **one keychain entry** (the encryption key for a
-local encrypted secrets file) — see the main skill and
-[runtime-storage-tradeoffs.md](runtime-storage-tradeoffs.md) for details.
+local encrypted secrets file) — see the main skill and the
+[encrypted store implementation guide](encrypted-store-implementation.md) for implementation details.
 
 ## Interpreted-Language CLIs (Python, Node, Ruby, etc.)
 

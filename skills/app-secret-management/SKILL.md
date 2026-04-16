@@ -31,11 +31,12 @@ and nag mechanism vary by context.
    This bounds ACL exposure to one entry — if it ever needs re-authorization,
    it's one action, not one per secret.
 
-2. **OS CLI tools for interpreted languages.** Python, Node, Ruby CLIs access
-   the keychain via OS CLI tools (`security` on macOS, `secret-tool` on Linux),
-   not keyring libraries. OS CLI tools have stable binary identity
-   (system-signed, fixed paths). Keyring libraries go through the interpreter
-   binary, whose identity changes on upgrades, venv rebuilds, and reinstalls.
+2. **OS CLI tools for interpreted languages on macOS/Linux.** Python, Node,
+   Ruby CLIs on macOS/Linux access the keychain via OS CLI tools (`security`
+   on macOS, `secret-tool` on Linux), not keyring libraries. OS CLI tools have
+   stable binary identity (system-signed, fixed paths). Keyring libraries go
+   through the interpreter binary, whose identity changes on upgrades, venv
+   rebuilds, and reinstalls.
 
 3. **Password manager is the durable backup.** On every secret mutation,
    auto-export the full secret set to the user's password manager. On a new
@@ -107,7 +108,7 @@ Use the **age** encryption format — one standard across all languages:
 - **Non-Python CLIs / shell scripts:** `age` CLI
 - **Config files with mixed secrets:** SOPS + age (only values encrypted)
 
-See [runtime-storage-tradeoffs.md](references/runtime-storage-tradeoffs.md) for
+See [encrypted-store-implementation.md](references/encrypted-store-implementation.md) for
 code examples.
 
 The encrypted file lives in the app's data directory (`~/.local/share/myapp/` on
