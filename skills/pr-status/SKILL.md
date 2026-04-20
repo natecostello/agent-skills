@@ -194,7 +194,7 @@ Merged: {mergedAt}
 For each blocking issue, suggest the appropriate command:
 - Unresolved comments → `/pr-resolve-comments {pr_number}`
 - CI failures → `/pr-resolve-ci-failures {pr_number}`
-- Merge conflicts → `/resolve-pr-conflicts {pr_number}`
+- Merge conflicts → `/pr-resolve-conflicts {pr_number}`
 - Unchecked task items → "Complete test plan items before merging" (list each unchecked item)
 - Changes requested / needs approval → "Requires human review"
 - Draft PR → "Convert to ready for review when done"
