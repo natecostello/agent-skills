@@ -82,8 +82,8 @@ NARRATIVE_SECTIONS = [
      "<b>Shift (Jan 24+):</b> Pretti killing fractured frame. WSJ/NY Post editorials broke. Fox reported perjury "
      "probe without defending officers. NR/DW still foregrounded immigration status."),
     ("The Left / Progressive",
-     "Sosa-Celis framed as victim of state violence from day one. Daily Beast: "How a Solitary Bullet Hole Blew "
-     "Apart ICE's Web of Lies." Salon ran three pieces. Common Dreams called for ICE abolition. "
+     "Sosa-Celis framed as victim of state violence from day one. Daily Beast: \"How a Solitary Bullet Hole Blew "
+     "Apart ICE's Web of Lies.\" Salon ran three pieces. Common Dreams called for ICE abolition. "
      "Register: <i>moral outrage and solidarity</i>. Third man's TX transfer framed as witness tampering."),
     ("The Center / Mainstream",
      "AP, CBS, NBC, ABC presented competing accounts. Shifted toward skepticism as evidence mounted. "
@@ -110,31 +110,31 @@ PUBLIC_SENTIMENT_DATA = [
 # source_aids_list should contain article IDs as they appear in article_data.py
 FACT_CHECKS = [
     ("'Sosa-Celis was armed'",
-     "DHS described men who "violently beat a law enforcement officer with weapons." Multiple right-leaning "
+     "DHS described men who \"violently beat a law enforcement officer with weapons.\" Multiple right-leaning "
      "outlets reported men wielded a snow shovel and broom handle as weapons.",
-     "No evidence indicates Sosa-Celis carried a firearm or weapon. The "weapons" were household items at "
+     "No evidence indicates Sosa-Celis carried a firearm or weapon. The \"weapons\" were household items at "
      "the residence. Photographic evidence showed the officer fired <i>through the front door</i> — "
      "inconsistent with a close-quarters street attack. Surveillance video did not corroborate the assault narrative.",
      "✘ FALSE — Sosa-Celis was unarmed. Household items retroactively characterized as weapons.",
      ['A34a', 'A15a', 'A22a', 'A31a', 'A27a']),
     ("'He attacked / ambushed ICE agents'",
-     "Sec. Noem: "an attempted murder of federal law enforcement." Federalist: "Propaganda Press Glosses Over "
-     "Attack On ICE Agent." Officers claimed they were beaten while on the ground.",
+     "Sec. Noem: \"an attempted murder of federal law enforcement.\" Federalist: \"Propaganda Press Glosses Over "
+     "Attack On ICE Agent.\" Officers claimed they were beaten while on the ground.",
      "Contradicted by: (1) city surveillance video; (2) two eyewitnesses within 10 feet; (3) neighbor testimony; "
      "(4) bullet hole through front door showing officer fired at retreating person. Prosecutors cited evidence "
-     ""materially inconsistent" with sworn testimony. All charges dismissed with prejudice. Two ICE officers "
+     "\"materially inconsistent\" with sworn testimony. All charges dismissed with prejudice. Two ICE officers "
      "now under federal perjury investigation.",
      "✘ FALSE — Assault narrative contradicted by video, physical evidence, and multiple witnesses.",
      ['A15b', 'A13a', 'A4b', 'A5a', 'A5b', 'A31a', 'A31b']),
     ("'He was a violent criminal'",
-     "DHS headline: "Three Violent Criminal Illegal Aliens." National Review: "brutal shovel beating." "
+     "DHS headline: \"Three Violent Criminal Illegal Aliens.\" National Review: \"brutal shovel beating.\" "
      "Adopted by Daily Wire, Federalist, OANN.",
      "Actual criminal record: <b>one conviction for driving without a license</b> and two arrests for giving "
      "a false name. Both minor, non-violent offenses. No violent criminal history in any court filing or investigation.",
      "✘ FALSE — Only conviction was a traffic offense.",
      ['A15a', 'A34a', 'A27a', 'A30a', 'A31a', 'A33a']),
     ("'He was an illegal alien subject to deportation'",
-     "DHS consistently used "illegal alien" and characterized the encounter as lawful enforcement.",
+     "DHS consistently used \"illegal alien\" and characterized the encounter as lawful enforcement.",
      "Entered US illegally Aug 2022 but subsequently <b>granted Temporary Protected Status (TPS)</b>, providing "
      "legal protection from deportation. Not under active deportation order at time of shooting. Working as "
      "DoorDash driver with a young son.",
@@ -150,8 +150,8 @@ FACT_CHECKS = [
     ("'The shooting was justified self-defense'",
      "Officer claimed he fired in self-defense while being ambushed, fearing for his life.",
      "FBI/DOJ investigation: (1) officer fired through closed door; (2) Sosa-Celis retreating into home when shot; "
-     "(3) video shows no active assault; (4) two officers provided "untruthful statements" under oath; "
-     "(5) evidence "materially inconsistent" with assault allegations. Non-fatal thigh wound. No body cameras deployed.",
+     "(3) video shows no active assault; (4) two officers provided \"untruthful statements\" under oath; "
+     "(5) evidence \"materially inconsistent\" with assault allegations. Non-fatal thigh wound. No body cameras deployed.",
      "⚠ EVIDENCE CONTRADICTS — Physical evidence, video, and witnesses inconsistent with self-defense. "
      "Perjury probe opened.",
      ['A9b', 'A10a', 'A8b', 'A20b']),
@@ -416,7 +416,7 @@ st.append(PageBreak())
 # ══════════ APPENDIX B — Government Narrative Alignment Basis ══════════
 st.append(Paragraph("Appendix B: Government Narrative Alignment — Basis Data", styles['H1']))
 st.append(Paragraph(
-    "This appendix provides the per-article data underlying the "Alignment with Government Narrative" "
+    "This appendix provides the per-article data underlying the \"Alignment with Government Narrative\" "
     "chart. Alignment is calculated as <b>(1 – sentiment) / 2</b>, mapping the -1 to +1 sentiment "
     "scale onto a 0–1 alignment scale where 1.0 = fully aligned with the DHS official account and "
     "0.0 = fully opposed. Each trace on the chart uses <b>only each outlet's most recent article</b> to "
