@@ -2,3 +2,7 @@
 *.swp
 *.swo
 *~
+
+# Ralph loop (local migration runner — not shipped with the repo)
+temp-ralph.*
+.ralph-logs/
