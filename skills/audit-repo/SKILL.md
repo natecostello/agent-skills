@@ -5,12 +5,12 @@ description: >-
   Reviews diffs, DA reports, metrics, and process compliance with graduated
   response (watch → warn → block) and corrective action recommendations.
   Trigger with "/audit-repo owner/repo" or "start auditing this repo".
-argument-hint: <owner/repo> [--interval 5m] [--audit-dir /path/to/audit/log]
-disable-model-invocation: true
 license: MIT
 metadata:
   author: natecostello
   version: "0.1"
+disable-model-invocation: true
+argument-hint: <owner/repo> [--interval 5m] [--audit-dir /path/to/audit/log]
 ---
 
 # Audit Repo
