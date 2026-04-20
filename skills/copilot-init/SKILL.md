@@ -28,7 +28,7 @@ git rev-parse --show-toplevel
 ls .github/copilot-instructions.md 2>/dev/null
 ```
 
-If the file exists, stop and suggest `/update-copilot-instructions` instead. Create `.github/` if absent.
+If the file exists, stop and suggest `/copilot-update` instead. Create `.github/` if absent.
 
 ### 2. Analyze the Repository
 
@@ -72,7 +72,7 @@ review feedback.
 Print what was created and remind about:
 - Enabling Copilot code review in repo Settings > Copilot > Code review
 - Adding Copilot as a default reviewer in branch protection rules
-- Using `/update-copilot-instructions` to keep the file current
+- Using `/copilot-update` to keep the file current
 
 ## Additional Resources
 
