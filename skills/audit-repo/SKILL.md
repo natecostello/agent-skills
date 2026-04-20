@@ -221,8 +221,10 @@ Bright-line violation. Create a blocking issue:
 Append to {audit_dir}/log.md:
 "YYYY-MM-DD HH:MM — PR #N: BLOCK: <description> (issue #M created)"
 
-After creating the blocking issue and appending to the log, run
-`/loop stop` to halt the audit loop immediately.
+After creating the blocking issue and appending to the log, cancel the
+audit loop immediately: run `CronList` to find this loop's job id
+(match by the prompt or schedule you started with), then
+`CronDelete <job-id>`.
 
 ### Bright Lines (block immediately)
 - Projected steady-state cost exceeds $25/mo
@@ -334,5 +336,7 @@ WARN with a GitHub issue.
 
 The audit loop runs until:
 - You stop it manually (Ctrl-C or close the session)
-- You invoke `/loop stop`
-- A BLOCK finding triggers an automatic `/loop stop`
+- You cancel the scheduled job by finding its id via `CronList`, then
+  running `CronDelete <job-id>`
+- A BLOCK finding: the agent cancels the loop as part of the BLOCK
+  workflow above (`CronList` + `CronDelete <job-id>`)
