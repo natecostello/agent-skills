@@ -4,7 +4,7 @@ Use this template when creating `.github/copilot-instructions.md`. Replace all `
 
 ---
 
-```markdown
+````markdown
 # Copilot Instructions
 
 ## Role
@@ -158,4 +158,4 @@ actual patterns. Examples:
 - Do not suggest reorganizing imports beyond what the linter enforces
 - Do not flag # noqa or # type: ignore without checking for a valid reason
 - Do not suggest adding __all__ exports — this is not a library>
-```
+````

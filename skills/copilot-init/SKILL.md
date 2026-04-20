@@ -28,7 +28,7 @@ git rev-parse --show-toplevel
 ls .github/copilot-instructions.md 2>/dev/null
 ```
 
-If the file exists, stop and suggest `/copilot-update` instead. Create `.github/` if absent.
+If the file exists, stop and suggest `/update-copilot-instructions` instead. Create `.github/` if absent.
 
 ### 2. Analyze the Repository
 
@@ -63,7 +63,7 @@ If `CLAUDE.md` exists, add a reference near the conventions or CI section:
 
 GitHub Copilot is configured as a PR code reviewer. Its instructions are in
 [`.github/copilot-instructions.md`](.github/copilot-instructions.md). Copilot reviews
-deliver inline comments with suggestion blocks. Use `/pr-resolve-comments` to process
+deliver inline comments with suggestion blocks. Use `/resolve-pr-comments` to process
 review feedback.
 ```
 
@@ -72,7 +72,7 @@ review feedback.
 Print what was created and remind about:
 - Enabling Copilot code review in repo Settings > Copilot > Code review
 - Adding Copilot as a default reviewer in branch protection rules
-- Using `/copilot-update` to keep the file current
+- Using `/update-copilot-instructions` to keep the file current
 
 ## Additional Resources
 
