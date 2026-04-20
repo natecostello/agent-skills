@@ -81,7 +81,7 @@ Also check if the Copilot review is an error (state is COMMENTED but body contai
 ```
 gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | .body'
 ```
-If the body contains "encountered an error" or "unable to review", report the review as **ERRORED** (not COMMENTED) and list it as a blocking issue with the suggestion to re-request: `/pr-resolve-comments {pr_number}`
+If the body contains "encountered an error" or "unable to review", report the review as **ERRORED** (not COMMENTED) and list it as a blocking issue with the suggestion to re-request: `/resolve-pr-comments {pr_number}`
 
 **2d. Labels and assignees** (open PRs only):
 ```
@@ -192,9 +192,9 @@ Merged: {mergedAt}
 - **Blocked** — has conflicts, failing CI, changes requested, unresolved threads requiring code changes, or unchecked non-deferred task items in the PR body
 
 For each blocking issue, suggest the appropriate command:
-- Unresolved comments → `/pr-resolve-comments {pr_number}`
-- CI failures → `/pr-resolve-ci-failures {pr_number}`
-- Merge conflicts → `/pr-resolve-conflicts {pr_number}`
+- Unresolved comments → `/resolve-pr-comments {pr_number}`
+- CI failures → `/resolve-pr-ci-failures {pr_number}`
+- Merge conflicts → `/resolve-pr-conflicts {pr_number}`
 - Unchecked task items → "Complete test plan items before merging" (list each unchecked item)
 - Changes requested / needs approval → "Requires human review"
 - Draft PR → "Convert to ready for review when done"
