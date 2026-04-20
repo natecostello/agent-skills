@@ -3,6 +3,9 @@
 *.swo
 *~
 
+# Python virtual environments (skills may bootstrap a local .venv/)
+.venv/
+
 # Local migration-epic tooling — not shipped with the repo
 temp-*
 .ralph-logs/
