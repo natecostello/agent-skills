@@ -35,7 +35,13 @@ CI).
 4. Record the current timestamp as the "last checked" marker.
 5. Write the monitoring prompt (below) to `{audit_dir}/prompt.md`, with all
    `{owner/repo}` and `{audit_dir}` placeholders interpolated to their actual values.
-6. Start the loop: `/loop <interval> @{audit_dir}/prompt.md`
+6. Start the loop: `/loop <interval> @{audit_dir}/prompt.md`. Capture the
+   cron job id returned by the `/loop` invocation and persist it for
+   reliable cancellation later:
+   - Write the job id to `{audit_dir}/cron-job-id` (one line, no
+     trailing newline, id only).
+   - Append a line to `{audit_dir}/log.md`:
+     `YYYY-MM-DD HH:MM — Loop started: job <job-id> interval <interval>`
 
 ## Monitoring Prompt
 
@@ -222,9 +228,16 @@ Append to {audit_dir}/log.md:
 "YYYY-MM-DD HH:MM — PR #N: BLOCK: <description> (issue #M created)"
 
 After creating the blocking issue and appending to the log, cancel the
-audit loop immediately: run `CronList` to find this loop's job id
-(match by the prompt or schedule you started with), then
-`CronDelete <job-id>`.
+audit loop immediately:
+
+1. Read the job id from `{audit_dir}/cron-job-id` (written at Setup
+   step 6). Run `CronDelete <job-id-from-file>` directly — no matching
+   needed.
+2. Fallback only if `{audit_dir}/cron-job-id` is missing or unreadable:
+   run `CronList`, match this loop by its prompt path
+   (`{audit_dir}/prompt.md`) and interval, then `CronDelete <job-id>`.
+   Using the file is preferred — fallback is for recovery only, not the
+   normal path.
 
 ### Bright Lines (block immediately)
 - Projected steady-state cost exceeds $25/mo
@@ -336,7 +349,9 @@ WARN with a GitHub issue.
 
 The audit loop runs until:
 - You stop it manually (Ctrl-C or close the session)
-- You cancel the scheduled job by finding its id via `CronList`, then
-  running `CronDelete <job-id>`
+- You cancel the scheduled job: read its id from
+  `{audit_dir}/cron-job-id` and run `CronDelete <job-id-from-file>`
+  (fall back to `CronList` matching by prompt path if the file is
+  missing)
 - A BLOCK finding: the agent cancels the loop as part of the BLOCK
-  workflow above (`CronList` + `CronDelete <job-id>`)
+  workflow above (file-based `CronDelete <job-id-from-file>`)
