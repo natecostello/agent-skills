@@ -102,3 +102,7 @@ Project-scoped installs automatically add the target directory pattern to `.git/
 ## Specification
 
 Skills follow the [agentskills.io specification](https://agentskills.io/specification). Required frontmatter fields are `name` and `description`. The `name` must match the parent directory, use lowercase letters/numbers/hyphens, and be 1-64 characters.
+
+## Licensing
+
+Skills in this repo are MIT-licensed by default. The `code-review` skill is the exception: it is derived from Anthropic's `code-review` plugin (Apache License 2.0) and retains its original Apache-2.0 license, with attribution and modification scheme documented in `skills/code-review/NOTICE.md`.
