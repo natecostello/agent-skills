@@ -125,7 +125,7 @@ Do NOT write an ADR for: bug fixes, dependency updates, formatting changes, or r
 
 ### Superseding an existing ADR
 
-1. Draft a new ADR (via `/new-adr`) with the new decision
+1. Draft a new ADR (via `/adr-new`) with the new decision
 2. In the new ADR's frontmatter, add `related ADRs: "Supersedes ADR-NNNN"`
 3. In Context, explain why the prior decision is being revisited
 4. After human approves the new ADR:
@@ -182,9 +182,9 @@ Print a summary of what was created/modified:
 - Copilot instructions update suggestion (if applicable)
 
 Remind the user:
-- Use `/new-adr <title>` to create new ADRs
+- Use `/adr-new <title>` to create new ADRs
 - Existing decisions can be captured retroactively
-- The `/new-adr` skill uses the MADR 4.0 template with the project's conventions
+- The `/adr-new` skill uses the MADR 4.0 template with the project's conventions
 - If `.github/copilot-instructions.md` exists, run `/update-copilot-instructions` to add an ADR compliance focus area
 
 ## Additional Resources
@@ -192,4 +192,4 @@ Remind the user:
 ### Reference Files
 
 - **[`references/adr-readme-template.md`](references/adr-readme-template.md)** — Template for the ADR index README
-- The `/new-adr` skill contains the full MADR 4.0 ADR template in its `references/`
+- The `/adr-new` skill contains the full MADR 4.0 ADR template in its `references/`
