@@ -3,6 +3,6 @@
 *.swo
 *~
 
-# Ralph loop (local migration runner — not shipped with the repo)
-temp-ralph.*
+# Local migration-epic tooling — not shipped with the repo
+temp-*
 .ralph-logs/
