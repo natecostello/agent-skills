@@ -63,7 +63,7 @@ If `CLAUDE.md` exists, add a reference near the conventions or CI section:
 
 GitHub Copilot is configured as a PR code reviewer. Its instructions are in
 [`.github/copilot-instructions.md`](.github/copilot-instructions.md). Copilot reviews
-deliver inline comments with suggestion blocks. Use `/resolve-pr-comments` to process
+deliver inline comments with suggestion blocks. Use `/pr-resolve-comments` to process
 review feedback.
 ```
 
