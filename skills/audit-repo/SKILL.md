@@ -41,7 +41,7 @@ CI).
 
 Write the following to `{audit_dir}/prompt.md` (with placeholders resolved):
 
-```
+````
 Self-check preamble — before doing any evaluation, echo these values:
   Repo: {owner/repo}
   Audit dir: {audit_dir}
@@ -263,7 +263,7 @@ Examples:
 This line is always printed, even on "no new activity" checks. It serves
 as a heartbeat — if the operator doesn't see a new line every interval,
 the loop has stopped.
-```
+````
 
 ## Audit Log Format
 
