@@ -71,10 +71,16 @@ To do this, follow these steps precisely:
 
    b. Build a JSON payload with these top-level fields:
       - `commit_id`: the PR head SHA
-      - `event`: "COMMENT" (never APPROVE or REQUEST_CHANGES unless the user explicitly asks)
+      - `event`: always `"COMMENT"`. Do not use `APPROVE` or `REQUEST_CHANGES`. Rationale:
+        GitHub rejects both `APPROVE` and `REQUEST_CHANGES` when the review author and the PR
+        author resolve to the same GitHub user account — the common case for solo-maintained
+        repos where `/code-review` runs under the PR author's login. Blocking vs. non-blocking
+        is instead signalled by the finding count in the body marker (`<!-- code-review-findings: N -->`)
+        and the task list under `## Findings (N)` (see 8g). If/when this skill runs under a
+        distinct reviewer identity, switching blocking findings to `REQUEST_CHANGES` is a
+        follow-up, tracked outside this skill.
       - `body`: the review summary (format below)
-      - `comments`: array of inline comments, one per finding that anchors to a line the PR actually
-        modifies
+      - `comments`: array of inline comments, one per finding (see 8c and 8e for anchoring)
 
    c. Each `comments[]` entry:
       - `path`: file path as it appears in `gh pr diff`
@@ -106,15 +112,40 @@ To do this, follow these steps precisely:
       EOF
       gh api repos/<owner>/<repo>/pulls/<N>/reviews -X POST --input /tmp/review.json
 
-   e. Findings that do not live on a modified line (docs consistency about untouched files,
-      architectural concerns, cross-cutting issues) cannot be inline — include them in the review
-      `body` with a full-SHA blob URL as context, not in `comments[]`.
+   e. Anchoring fallback — prefer inline, fall back to body only when unavoidable. Goal: every
+      actionable finding should become a GitHub review thread (each inline comment is a thread),
+      because downstream tooling like `/pr-resolve-comments` discovers work via the
+      `reviewThreads` GraphQL field.
 
-   f. No-issues case: still submit a review with `event: "COMMENT"`, a body that follows the template
-      below with a closing line "No issues found. Checked for bugs and CLAUDE.md compliance.", and
-      an empty or omitted `comments` array. This keeps the review footprint consistent.
+      - **File-level findings** (concern a file that appears in the PR diff but don't map to a
+        specific diff line — e.g., "missing license header", "file-level convention violation"):
+        post as an inline comment on the lowest new-file line of that file that appears in a hunk
+        (`line: 1, side: "RIGHT"` works for newly added files). Prefix the comment `body` with
+        `(file-level) ` so the reader sees the context immediately. Example:
 
-   g. Review body format (Copilot style):
+          {
+            "path": "src/new_module.py",
+            "line": 1,
+            "side": "RIGHT",
+            "body": "(file-level) New module is missing the Apache-2.0 license header required by CLAUDE.md."
+          }
+
+      - **Truly cross-cutting findings** (architectural concerns with no single file anchor, or
+        findings about untouched files that the PR should have touched): these cannot be inline.
+        Include them in the review `body` under `## Findings (N)` as a task list item with a
+        full-SHA blob URL when citing code, and omit the `see inline comment at ...` tail.
+
+   f. No-issues case: still submit a review with `event: "COMMENT"`, the body format below with
+      `N = 0` (marker + `## Findings (0)` heading + the literal closing line
+      "No issues found. Checked for bugs and CLAUDE.md compliance."), and an empty or omitted
+      `comments` array. Keeping the marker present even for zero findings lets tooling reliably
+      detect that a `/code-review` review ran.
+
+   g. Review body format (Copilot style). The first line MUST be the machine-readable marker
+      — downstream tooling greps for it before parsing the body. `N` is the finding count and
+      must match between the marker and the `## Findings (N)` heading:
+
+      <!-- code-review-findings: N -->
       ## Pull request overview
       <one-paragraph summary reused from step 3>
 
@@ -128,12 +159,36 @@ To do this, follow these steps precisely:
       | ---- | ----------- |
       | <path> | <one-line purpose> |
 
-      Found N issues. See inline comments below.
-      (Or: "No issues found. Checked for bugs and CLAUDE.md compliance.")
+      ## Findings (N)
+
+      - [ ] <short title> — see inline comment at <path>:<line>
+      - [ ] <short title> — see inline comment at <path>:<line>
+      (For cross-cutting findings with no inline anchor, use:
+       `- [ ] <short title> — <prose with full-SHA blob URL>`)
 
       🤖 Generated with [Claude Code](https://claude.ai/code) using /code-review
 
       <sub>- If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
+
+      Rules for the marker + findings block:
+      - The HTML comment `<!-- code-review-findings: N -->` is on its own line at the very top
+        of the body. Do not wrap it in anything.
+      - `N` is the total count of task-list items under `## Findings (N)` (inline + cross-cutting).
+      - Task checkboxes are authored as `- [ ]` (unchecked). `/pr-resolve-comments` ticks them
+        off as findings are addressed.
+      - Zero-findings form:
+
+          <!-- code-review-findings: 0 -->
+          ## Pull request overview
+          ...
+
+          ## Findings (0)
+
+          No issues found. Checked for bugs and CLAUDE.md compliance.
+
+          🤖 Generated with [Claude Code](https://claude.ai/code) using /code-review
+
+          <sub>- If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
 
    h. Keep the body brief, avoid emojis in finding text (the trailing robot + feedback line is the
       only exception), and link or cite relevant code/files/URLs with full-SHA blob URLs only in the
@@ -149,6 +204,59 @@ To do this, follow these steps precisely:
 
          gh pr edit <N> --remove-label "claude/code-review:in-progress" --repo <owner>/<repo>
 
+</custom>
+
+<custom>
+## Output Contract
+
+Downstream skills — notably `/pr-resolve-comments` — depend on a stable output shape from
+`/code-review`. Any change to this contract requires a coordinated update to the consumers
+(see epic #6 and follow-up #21).
+
+- **Review submission.** A single review per run, submitted via
+  `gh api repos/:owner/:repo/pulls/:num/reviews -X POST` with `event: "COMMENT"`. Never
+  `APPROVE` or `REQUEST_CHANGES` (see step 8b for the self-review rationale).
+
+- **Body marker (primary discovery signal).** The review body's first line is the HTML
+  comment `<!-- code-review-findings: N -->`, where `N` is the integer finding count (0 if
+  none). Downstream tooling greps this marker before parsing; it must appear even in the
+  no-issues case.
+
+- **Findings heading + task list.** The body contains `## Findings (N)` with the same `N`
+  as the marker, followed by a GitHub-flavoured-Markdown task list — one `- [ ]` per
+  finding. Each item reads
+  `- [ ] <short title> — see inline comment at <path>:<line>`
+  for inline-anchored findings, or
+  `- [ ] <short title> — <prose with full-SHA blob URL>`
+  for cross-cutting findings that have no inline anchor. `/pr-resolve-comments` ticks the
+  boxes as findings are resolved.
+
+- **Inline comment schema.** Each `comments[]` entry in the review payload includes:
+  - `path`: file path as shown in `gh pr diff`
+  - `line`: new-file line number within a diff hunk
+  - `side`: `"RIGHT"` for added/context lines, `"LEFT"` for deletions
+  - `body`: prose; optionally followed by a fenced ` ```suggestion ` block with a
+    mechanical replacement
+  - Multi-line spans: add `start_line` + `start_side`
+  - **File-level findings** use the lowest in-hunk new-file line of the target file
+    (typically `line: 1, side: "RIGHT"` for newly added files) and prefix the body with
+    `(file-level) ` so the reader sees the context immediately.
+  - Do not use the deprecated `position` field.
+  Every inline comment becomes a GitHub review thread, which `/pr-resolve-comments`
+  discovers via the `reviewThreads` GraphQL field.
+
+- **Footer.** The body ends with the two-line footer:
+
+      🤖 Generated with [Claude Code](https://claude.ai/code) using /code-review
+
+      <sub>- If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
+
+- **Labels.** The PR transitions `claude/code-review:in-progress` (set in 1.5) →
+  `claude/code-review:reviewed` (set in 8i) on successful submission. On early exit after
+  1.5, only the in-progress label is removed.
+
+- **`commit_id`.** Always set to the PR HEAD SHA at submission time, so consumers can
+  correlate a review with the commit it covers.
 </custom>
 
 Examples of false positives, for steps 4 and 5:
