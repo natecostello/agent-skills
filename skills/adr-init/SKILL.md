@@ -125,7 +125,7 @@ Do NOT write an ADR for: bug fixes, dependency updates, formatting changes, or r
 
 ### Superseding an existing ADR
 
-1. Draft a new ADR (via `/adr-new`) with the new decision
+1. Draft a new ADR (via `/new-adr`) with the new decision
 2. In the new ADR's frontmatter, add `related ADRs: "Supersedes ADR-NNNN"`
 3. In Context, explain why the prior decision is being revisited
 4. After human approves the new ADR:
@@ -167,13 +167,9 @@ If `.github/PULL_REQUEST_TEMPLATE.md` exists, add an Architecture section:
 - [x] No architectural decision needed
 ```
 
-### 10. Add ADR Review Focus to Copilot Instructions
+### 10. Suggest Updating Copilot Instructions
 
-If `.github/copilot-instructions.md` exists, add an ADR compliance focus area to the "Code Review Focus Areas" section:
-
-```
-N. **ADR compliance** — if the PR adds or modifies an ADR in `docs/architecture/`, verify it follows MADR 4.0 format (frontmatter with status/date/related ADRs, Decision Drivers, Considered Options with pros/cons, Decision Outcome with Consequences and Confirmation). If the PR changes architecture without an ADR, flag it as needing one
-```
+If `.github/copilot-instructions.md` exists, do NOT edit it inline. Instead, tell the user to run `/update-copilot-instructions` to regenerate it — that command performs a full audit of all sections and will add an ADR compliance focus area covering MADR 4.0 format checks (frontmatter with status/date/related ADRs, Decision Drivers, Considered Options with pros/cons, Decision Outcome with Consequences and Confirmation) and flagging architecture changes that lack an ADR.
 
 ### 11. Report
 
@@ -183,16 +179,17 @@ Print a summary of what was created/modified:
 - README.md link
 - CONTRIBUTING.md section
 - PR template section
-- Copilot instructions focus area
+- Copilot instructions update suggestion (if applicable)
 
 Remind the user:
-- Use `/adr-new <title>` to create new ADRs
+- Use `/new-adr <title>` to create new ADRs
 - Existing decisions can be captured retroactively
-- The `/adr-new` skill uses the MADR 4.0 template with the project's conventions
+- The `/new-adr` skill uses the MADR 4.0 template with the project's conventions
+- If `.github/copilot-instructions.md` exists, run `/update-copilot-instructions` to add an ADR compliance focus area
 
 ## Additional Resources
 
 ### Reference Files
 
 - **[`references/adr-readme-template.md`](references/adr-readme-template.md)** — Template for the ADR index README
-- The `/adr-new` skill contains the full MADR 4.0 ADR template at `~/.claude/skills/adr-new/references/template.md`
+- The `/new-adr` skill contains the full MADR 4.0 ADR template in its `references/`
