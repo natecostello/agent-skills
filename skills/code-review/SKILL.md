@@ -29,7 +29,7 @@ To do this, follow these steps precisely:
 
    Override: if the command arguments include `force` or `re-review` (in addition to the PR number), skip the duplicate-review gate entirely and proceed. The (a)/(b)/(c) gates still apply.
 <custom>
-1.5. Signal "review in progress" by labeling the PR with `claude/code-review:in-progress`, so other agents or humans monitoring the PR know a review is underway. Also pre-create the `claude/code-review:reviewed` and `claude/code-review:approved` labels that steps 8.i and 8.j will apply on completion. Remove any stale `:approved` from the PR — a new HEAD invalidates prior approval regardless of this run's outcome, and the approval gate in step 8.j will re-apply it if the new review earns it. Run:
+1.5. Signal "review in progress" by labeling the PR with `claude/code-review:in-progress`, so other agents or humans monitoring the PR know a review is underway. Also pre-create the `claude/code-review:reviewed` and `claude/code-review:approved` labels that steps 8.i and 9 will apply on completion. Remove any stale `:approved` from the PR — a new HEAD invalidates prior approval regardless of this run's outcome, and the approval gate in step 9 will re-apply it if the new review earns it. Run:
 
      gh label create "claude/code-review:in-progress" --color 1f6feb --description "Claude Code review in progress" --force --repo <owner>/<repo> 2>/dev/null || true
      gh label create "claude/code-review:reviewed"    --color 0e8a16 --description "Claude Code review complete"    --force --repo <owner>/<repo> 2>/dev/null || true
