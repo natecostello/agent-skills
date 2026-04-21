@@ -210,10 +210,12 @@ To do this, follow these steps precisely:
       in step 1(d) — in which case nothing from 1.5 through 8.i has run), evaluate whether this PR
       has earned `claude/code-review:approved`. Apply the label only if ALL three conditions hold:
 
-      - **(a) No blocking findings on the current-HEAD review.** On the fresh-review path, this is
-        true iff step 6's ≥80-confidence filter returned zero findings. On the duplicate-skip path,
-        fetch the latest /code-review review's body and require it contains `## Findings (0)` or
-        the literal string "No issues found".
+      - **(a) No blocking findings on the current-HEAD review.** Determine this from the actual
+        posted review body, not from step 6's in-memory filter result. The body's first line is the
+        machine-readable marker `<!-- code-review-findings: N -->` (see step 8.g); fetch the latest
+        /code-review review for the current HEAD and require `N == 0`. Fallback for legacy reviews
+        predating the marker: accept `## Findings (0)` or the literal string "No issues found" in
+        the body. This applies equally to the fresh-review and duplicate-skip paths.
       - **(b) Every review thread this reviewer opened on this PR is resolved.** Scope: threads
         whose first comment's enclosing review body contains the `/code-review` footer. Check via
         GraphQL:
