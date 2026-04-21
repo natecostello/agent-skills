@@ -44,20 +44,23 @@ intervention, run a `/loop` in a long-lived dedicated session (convention: sessi
 ```
 /loop 5m <
 For each open PR in <owner>/<repo> whose labels do NOT include
-  claude/code-review:reviewed or claude/code-review:in-progress:
+  claude/code-review:in-progress:
     run /code-review <PR-number>
 >
 ```
 
-The outer loop discovers NEW PRs and invokes the skill once per PR. When the author pushes
-fix commits, the loop's next tick picks up the new HEAD: `/code-review` re-reviews the new
-SHA and re-evaluates the gate. Approval is granted automatically when the PR is clean.
+The outer loop invokes the skill on every open PR each tick. The skill handles dedup
+internally: step 1(d) short-circuits cheaply when the prior review's `commit_id` matches
+the current HEAD (no re-review — just re-runs the approval gate, which catches the case
+where the author resolved threads since the last review). When the author pushes fix
+commits, HEAD moves, step 1(d)'s match fails, and the skill re-reviews the new SHA from
+scratch — re-applying `:approved` if the new review lands clean.
 
-The outer loop deliberately does NOT re-invoke on already-reviewed PRs to catch
-re-approvals after late thread resolution. The author-side workflow (`/pr-resolve-comments`
-or similar) can invoke `/code-review <PR>` directly after resolving threads to nudge the
-gate — the skill's softened duplicate-review short-circuit evaluates the gate without
-posting a second review.
+The `:in-progress` filter is an in-flight-work guard only — it prevents parallel runs of
+the skill on the same PR, not re-runs at new HEADs. Do NOT filter on `:reviewed` or
+`:approved`: those labels are sticky across HEAD changes until a fresh run of the skill
+strips them, so filtering on them would trap PRs in their post-first-review state and
+prevent re-review when the author pushes fixes.
 
 ### Force re-review
 
