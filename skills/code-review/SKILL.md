@@ -25,7 +25,7 @@ To do this, follow these steps precisely:
 
 1. Use a Haiku agent to check if the pull request (a) is closed, (b) is a draft, or (c) does not need a code review (eg. because it is an automated pull request, or is very simple and obviously ok). If so, do not proceed.
 
-   For duplicate-review detection (d): if there is already a review from you (identifiable by the "Generated with [Claude Code](https://claude.ai/code) using /code-review" footer in the review body) whose `commit_id` matches the current PR HEAD SHA, *skip the review work* (steps 1.5 through 8.i). Do not re-review, do not re-post, do not touch the `:in-progress` / `:reviewed` labels. Instead, jump directly to step 8.j (approval gate) and then exit. Rationale: between the prior review and this invocation, the author may have resolved threads that were blocking approval — the skill grants `:approved` in that case without needing a new commit. A stale review on an older SHA does not gate — re-review the new commits.
+   For duplicate-review detection (d): if there is already a review from you (identifiable by the "Generated with [Claude Code](https://claude.ai/code) using /code-review" footer in the review body) whose `commit_id` matches the current PR HEAD SHA, *skip the review work* (steps 1.5 through 8). Do not re-review, do not re-post, do not touch the `:in-progress` / `:reviewed` labels. Instead, jump directly to **step 9 (approval gate)** and then exit. Rationale: between the prior review and this invocation, the author may have resolved threads that were blocking approval — the skill grants `:approved` in that case without needing a new commit. A stale review on an older SHA does not gate — re-review the new commits.
 
    Override: if the command arguments include `force` or `re-review` (in addition to the PR number), skip the duplicate-review gate entirely and proceed. The (a)/(b)/(c) gates still apply.
 <custom>
@@ -56,7 +56,7 @@ To do this, follow these steps precisely:
    c. 50: Moderately confident. The agent was able to verify this is a real issue, but it might be a nitpick or not happen very often in practice. Relative to the rest of the PR, it's not very important.
    d. 75: Highly confident. The agent double checked the issue, and verified that it is very likely it is a real issue that will be hit in practice. The existing approach in the PR is insufficient. The issue is very important and will directly impact the code's functionality, or it is an issue that is directly mentioned in the relevant CLAUDE.md.
    e. 100: Absolutely certain. The agent double checked the issue, and confirmed that it is definitely a real issue, that will happen frequently in practice. The evidence directly confirms this.<custom>  Documentation issues should be scored 100.</custom>
-6. Filter out any issues with a score less than 80. The remaining set (which may be empty) is the review's blocking findings. Proceed to step 7 and then step 8 regardless of the filtered count — step 8.f requires a review to be submitted even in the zero-findings case, and step 8.j's approval gate runs for every invocation that reaches step 8. "Do not proceed" here applies only to per-finding inline-comment handling on the empty set, not to the review submission and labeling path.
+6. Filter out any issues with a score less than 80. The remaining set (which may be empty) is the review's blocking findings. Proceed to step 7, step 8 (review submission), and step 9 (approval gate) regardless of the filtered count — step 8.f requires a review to be submitted even in the zero-findings case, and step 9's approval gate runs for every invocation that reaches this point. "Do not proceed" here applies only to per-finding inline-comment handling on the empty set, not to the review submission, labeling, or approval path.
 7. Use a Haiku agent to repeat the eligibility check from #1, to make sure that the pull request is still eligible for code review.
 <ignore>
 8. Finally, use the gh bash command to comment back on the pull request with the result. <custom>Include a summary comment of all comments.  Use inline comments for specific comments</custom> When writing your comment, keep in mind to:
@@ -206,72 +206,105 @@ To do this, follow these steps precisely:
 
          gh pr edit <N> --remove-label "claude/code-review:in-progress" --repo <owner>/<repo>
 
-   j. Approval gate. After step 8.i (or entering directly from the softened duplicate-review path
-      in step 1(d) — in which case nothing from 1.5 through 8.i has run), evaluate whether this PR
-      has earned `claude/code-review:approved`. Apply the label only if ALL three conditions hold:
+</custom>
 
-      - **(a) No blocking findings on the current-HEAD review.** Determine this from the actual
-        posted review body, not from step 6's in-memory filter result. The body's first line is the
-        machine-readable marker `<!-- code-review-findings: N -->` (see step 8.g); fetch the latest
-        /code-review review for the current HEAD and require `N == 0`. Fallback for legacy reviews
-        predating the marker: accept `## Findings (0)` or the literal string "No issues found" in
-        the body. This applies equally to the fresh-review and duplicate-skip paths.
-      - **(b) Every review thread this reviewer opened on this PR is resolved.** Scope: threads
-        whose first comment's enclosing review body contains the `/code-review` footer. Paginate
-        through ALL threads — a single `reviewThreads(first:N)` page can silently miss unresolved
-        threads on busy PRs:
+<custom>
+## 9. Approval gate (MANDATORY — runs after every invocation that reaches this point)
 
-            CURSOR=null
-            UNRESOLVED=0
-            while :; do
-              PAGE=$(gh api graphql \
-                -F owner=<owner> -F repo=<repo> -F number=<N> -F cursor="$CURSOR" \
-                -f query='
-                query($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
-                  repository(owner:$owner, name:$repo) {
-                    pullRequest(number:$number) {
-                      reviewThreads(first:100, after:$cursor) {
-                        pageInfo { hasNextPage endCursor }
-                        nodes {
-                          isResolved
-                          comments(first:1) { nodes { pullRequestReview { body } } }
-                        }
-                      }
-                    }
+This is a separate phase from step 8. It runs on BOTH paths:
+
+- **Fresh-review path:** after step 8.i (label swap) completes.
+- **Duplicate-skip path:** entered directly from step 1(d) — nothing from 1.5 through 8 has run,
+  but the approval gate still evaluates because threads may have been resolved since the prior
+  review was posted.
+
+It does NOT run if the skill exited early before this point (e.g. step 7 ineligibility, review
+submission failure). In those cases the in-progress label was already removed per step 8.i's
+early-exit guidance; `:approved` is simply not touched.
+
+Evaluate whether this PR has earned `claude/code-review:approved`. Apply the label only if ALL
+three conditions hold:
+
+- **(a) No blocking findings on the current-HEAD review.** Determine this from the actual
+  posted review body, not from step 6's in-memory filter result. The body's first line is the
+  machine-readable marker `<!-- code-review-findings: N -->` (see step 8.g); fetch the latest
+  /code-review review for the current HEAD and require `N == 0`. Fallback for legacy reviews
+  predating the marker: accept `## Findings (0)` or the literal string "No issues found" in
+  the body. This applies equally to the fresh-review and duplicate-skip paths.
+- **(b) Every review thread this reviewer opened on this PR is resolved.** Scope: threads
+  whose first comment's enclosing review body contains the `/code-review` footer. Paginate
+  through ALL threads — a single `reviewThreads(first:N)` page can silently miss unresolved
+  threads on busy PRs:
+
+      CURSOR=null
+      UNRESOLVED=0
+      while :; do
+        PAGE=$(gh api graphql \
+          -F owner=<owner> -F repo=<repo> -F number=<N> -F cursor="$CURSOR" \
+          -f query='
+          query($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
+            repository(owner:$owner, name:$repo) {
+              pullRequest(number:$number) {
+                reviewThreads(first:100, after:$cursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    isResolved
+                    comments(first:1) { nodes { pullRequestReview { body } } }
                   }
-                }')
-              UNRESOLVED=$((UNRESOLVED + $(jq '[.data.repository.pullRequest.reviewThreads.nodes[]
-                | select(.comments.nodes[0].pullRequestReview.body | contains("/code-review"))
-                | select(.isResolved == false)] | length' <<<"$PAGE")))
-              HAS_NEXT=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$PAGE")
-              [ "$HAS_NEXT" = "true" ] || break
-              CURSOR=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<<"$PAGE")
-            done
+                }
+              }
+            }
+          }')
+        UNRESOLVED=$((UNRESOLVED + $(jq '[.data.repository.pullRequest.reviewThreads.nodes[]
+          | select(.comments.nodes[0].pullRequestReview.body | contains("/code-review"))
+          | select(.isResolved == false)] | length' <<<"$PAGE")))
+        HAS_NEXT=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$PAGE")
+        [ "$HAS_NEXT" = "true" ] || break
+        CURSOR=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<<"$PAGE")
+      done
 
-        Require `UNRESOLVED -eq 0`.
-      - **(c) HEAD is unchanged since the review was submitted.** Race guard against a push that
-        landed between step 8 (review POST) and this step. Re-fetch HEAD immediately before adding
-        the label and compare to the review's `commit_id`:
+  Require `UNRESOLVED -eq 0`.
+- **(c) HEAD is unchanged since the review was submitted.** Race guard against a push that
+  landed between step 8 (review POST) and this step. Re-fetch HEAD immediately before adding
+  the label and compare to the review's `commit_id`:
 
-            CURRENT_HEAD=$(gh pr view <N> --repo <owner>/<repo> --json headRefOid -q .headRefOid)
-            # Apply label only if CURRENT_HEAD matches the review commit_id
+      CURRENT_HEAD=$(gh pr view <N> --repo <owner>/<repo> --json headRefOid -q .headRefOid)
+      # Apply label only if CURRENT_HEAD matches the review commit_id
 
-      If all three pass:
+If all three pass:
 
-         gh pr edit <N> --add-label "claude/code-review:approved" --repo <owner>/<repo>
+   gh pr edit <N> --add-label "claude/code-review:approved" --repo <owner>/<repo>
 
-      If any fails: do not add `:approved` and do not post additional comments. The review body has
-      already communicated any findings; a future invocation (new HEAD or late thread resolution)
-      will re-evaluate the gate.
+If any fails: do not add `:approved` and do not post additional comments. The review body has
+already communicated any findings; a future invocation (new HEAD or late thread resolution)
+will re-evaluate the gate.
 
-      Intentionally does NOT check threads opened by other reviewers (Copilot, human). That's the
-      PR author's merge-gate concern, not this reviewer's.
+Intentionally does NOT check threads opened by other reviewers (Copilot, human). That's the
+PR author's merge-gate concern, not this reviewer's.
 
-      Do NOT attempt `event: "APPROVE"` on the review itself — GitHub rejects self-approval when
-      the review author and PR author authenticate as the same GitHub user (the common case for
-      solo-maintained repos where /code-review runs under the PR author's login). The label is the
-      approval signal; downstream consumers gate on it.
+Do NOT attempt `event: "APPROVE"` on the review itself — GitHub rejects self-approval when
+the review author and PR author authenticate as the same GitHub user (the common case for
+solo-maintained repos where /code-review runs under the PR author's login). The label is the
+approval signal; downstream consumers gate on it.
 
+## 10. Termination checklist (STOP before returning to the caller)
+
+Before terminating, explicitly confirm each of the following. If you cannot answer "yes" to an
+applicable item, do not terminate — go back and complete it.
+
+- [ ] **Eligibility gate (step 1) evaluated.** If the PR was ineligible (closed/draft/automated/trivial),
+      you exited before step 1.5 and no labels were touched — skip the remaining items.
+- [ ] **Path selected.** Either the fresh-review path (1.5 → 8) ran to completion, or the
+      duplicate-skip path (1(d)) routed directly to step 9. One of these must be true.
+- [ ] **Labels reconciled.** On the fresh-review path: `:in-progress` was removed and `:reviewed`
+      was added in step 8.i (or only `:in-progress` was removed on early exit between 1.5 and 8.i).
+      On the duplicate-skip path: labels were intentionally untouched.
+- [ ] **Approval gate (step 9) evaluated.** This runs on BOTH the fresh-review and duplicate-skip
+      paths. `:approved` was either added (all three conditions passed) or intentionally not added
+      (at least one condition failed). Evaluation must have occurred — silently skipping step 9 is
+      the primary failure mode this checklist guards against.
+
+Only after all applicable items are confirmed may you return to the caller.
 </custom>
 
 <custom>
@@ -322,8 +355,8 @@ Downstream skills — notably `/pr-resolve-comments` — depend on a stable outp
 - **Labels.** The PR transitions `claude/code-review:in-progress` (set in 1.5) →
   `claude/code-review:reviewed` (set in 8.i) on successful submission. On early exit after
   1.5, only the in-progress label is removed. Additionally, `claude/code-review:approved`
-  is applied in step 8.j when the approval gate passes (no blocking findings, all
-  /code-review-authored threads resolved, HEAD unchanged), and is removed in step 1.5 at
+  is applied in step 9 (approval gate) when all three conditions pass (no blocking findings,
+  all /code-review-authored threads resolved, HEAD unchanged), and is removed in step 1.5 at
   the start of every fresh-review run since a new HEAD invalidates prior approval.
   Downstream consumers MAY gate merges on `:approved`.
 
