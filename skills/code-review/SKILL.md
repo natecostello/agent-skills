@@ -217,27 +217,38 @@ To do this, follow these steps precisely:
         predating the marker: accept `## Findings (0)` or the literal string "No issues found" in
         the body. This applies equally to the fresh-review and duplicate-skip paths.
       - **(b) Every review thread this reviewer opened on this PR is resolved.** Scope: threads
-        whose first comment's enclosing review body contains the `/code-review` footer. Check via
-        GraphQL:
+        whose first comment's enclosing review body contains the `/code-review` footer. Paginate
+        through ALL threads — a single `reviewThreads(first:N)` page can silently miss unresolved
+        threads on busy PRs:
 
-            gh api graphql -f query='
-            { repository(owner:"<owner>", name:"<repo>") {
-                pullRequest(number:<N>) {
-                  reviewThreads(first:50) {
-                    nodes {
-                      isResolved
-                      comments(first:1) {
-                        nodes { pullRequestReview { body } }
+            CURSOR=null
+            UNRESOLVED=0
+            while :; do
+              PAGE=$(gh api graphql \
+                -F owner=<owner> -F repo=<repo> -F number=<N> -F cursor="$CURSOR" \
+                -f query='
+                query($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
+                  repository(owner:$owner, name:$repo) {
+                    pullRequest(number:$number) {
+                      reviewThreads(first:100, after:$cursor) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                          isResolved
+                          comments(first:1) { nodes { pullRequestReview { body } } }
+                        }
                       }
                     }
                   }
-                }
-              }
-            }' --jq '[.data.repository.pullRequest.reviewThreads.nodes
-              | select(.comments.nodes[0].pullRequestReview.body | contains("/code-review"))
-              | select(.isResolved == false)] | length'
+                }')
+              UNRESOLVED=$((UNRESOLVED + $(jq '[.data.repository.pullRequest.reviewThreads.nodes[]
+                | select(.comments.nodes[0].pullRequestReview.body | contains("/code-review"))
+                | select(.isResolved == false)] | length' <<<"$PAGE")))
+              HAS_NEXT=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$PAGE")
+              [ "$HAS_NEXT" = "true" ] || break
+              CURSOR=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<<"$PAGE")
+            done
 
-        Must return `0`.
+        Require `UNRESOLVED -eq 0`.
       - **(c) HEAD is unchanged since the review was submitted.** Race guard against a push that
         landed between step 8 (review POST) and this step. Re-fetch HEAD immediately before adding
         the label and compare to the review's `commit_id`:
